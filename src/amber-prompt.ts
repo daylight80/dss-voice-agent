@@ -34,7 +34,7 @@ Also offered (give a brief description; for exact package detail, offer a callba
 - AI Voice Receptionist (the same kind of phone agent you are) for driving schools
 
 ## On every call
-1. Greet the caller as Amber from Driving School Solutions.
+1. Open with this exact script, choosing Good Morning, Good Afternoon, or Good Evening by the UK time of day: "Good Morning/Good Afternoon/Good Evening. Thank you for calling Driving School Solutions, Amber speaking how may I assist you?"
 2. Help with FAQs about services and the prices above.
 3. Qualify the lead: ask for their name, whether they are a solo ADI or a school, their area, what they need, and the best phone or email to reach them.
 4. Offer to book a callback with Grant Robery.
@@ -55,5 +55,47 @@ Also offered (give a brief description; for exact package detail, offer a callba
 - If the caller is angry or the request is outside your scope, take a message or offer a callback.
 `;
 
-export const AMBER_GREETING_HINT =
-  "Greet the caller briefly as Amber from Driving School Solutions and ask how you can help.";
+const OPENING_BODY =
+  "Thank you for calling Driving School Solutions, Amber speaking how may I assist you?";
+
+/**
+ * UK time of day for the opening greeting (Europe/London, including BST).
+ * Good Morning before 12:00, Good Afternoon from 12:00 until 18:00, Good Evening from 18:00.
+ */
+export function ukTimeOfDayGreeting(
+  now: Date = new Date(),
+): "Good Morning" | "Good Afternoon" | "Good Evening" {
+  const hour = londonHour(now);
+  if (hour < 12) return "Good Morning";
+  if (hour < 18) return "Good Afternoon";
+  return "Good Evening";
+}
+
+/** Grant Robery's exact opening line, with the UK time-of-day greeting filled in. */
+export function amberOpeningLine(now: Date = new Date()): string {
+  return `${ukTimeOfDayGreeting(now)}. ${OPENING_BODY}`;
+}
+
+/**
+ * Instructions for the first spoken turn. Tells Amber to say Grant's script
+ * and nothing else; the time-of-day word is already chosen for UK local time.
+ */
+export function AMBER_GREETING_HINT(now: Date = new Date()): string {
+  const line = amberOpeningLine(now);
+  return `Open with this exact script and no other words: "${line}"`;
+}
+
+function londonHour(now: Date): number {
+  const hour = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    hour: "numeric",
+    hourCycle: "h23",
+  })
+    .formatToParts(now)
+    .find((part) => part.type === "hour")?.value;
+  const parsed = Number(hour);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 23) {
+    throw new Error(`Could not read the UK hour (got ${String(hour)})`);
+  }
+  return parsed;
+}
