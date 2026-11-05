@@ -12,6 +12,8 @@ export type LeadRecord = {
   name?: string;
   phone?: string;
   email?: string;
+  postcode?: string;
+  theory_test_status?: string;
   interest?: string;
   school_or_area?: string;
   preferred_time?: string;
@@ -100,10 +102,15 @@ export async function deliverEmail(
   };
 }
 
+export function renderLeadEmail(record: LeadRecord): { subject: string; text: string } {
+  return { subject: subjectFor(record), text: bodyFor(record) };
+}
+
 export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolean; detail: string }> {
+  const email = renderLeadEmail(record);
   return deliverEmail({
-    subject: subjectFor(record),
-    text: bodyFor(record),
+    subject: email.subject,
+    text: email.text,
     record,
     logContext: { type: record.type, name: record.name },
   });
@@ -129,6 +136,8 @@ function bodyFor(record: LeadRecord): string {
     record.name ? `Name: ${record.name}` : null,
     record.phone ? `Phone: ${record.phone}` : null,
     record.email ? `Email: ${record.email}` : null,
+    record.postcode ? `Postcode: ${record.postcode}` : null,
+    record.theory_test_status ? `Theory test: ${record.theory_test_status}` : null,
     record.school_or_area ? `School / area: ${record.school_or_area}` : null,
     record.interest ? `Interest: ${record.interest}` : null,
     record.preferred_time ? `Preferred callback: ${record.preferred_time}` : null,

@@ -18,6 +18,8 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Name",
   phone: "Phone",
   email: "Email",
+  postcode: "Postcode",
+  theory_test_status: "Theory test",
   interest: "Interest",
   school_or_area: "School or area",
   preferred_time: "Preferred time",

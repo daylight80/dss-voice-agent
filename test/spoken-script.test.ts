@@ -16,6 +16,12 @@ test("Amber's spoken script does not name Grant", async () => {
   ].join("\n");
   assert.doesNotMatch(spoken, /Grant/);
   assert.match(spoken, /a member of our team/);
+  assert.match(spoken, /driving students/);
+  assert.match(spoken, /southern English \(London and Surrey\) accent/);
+  assert.match(AMBER_INSTRUCTIONS, /And what's your postcode, so we can check we cover your area\?/);
+  assert.match(AMBER_INSTRUCTIONS, /Have you passed your theory test yet\?/);
+  assert.match(AMBER_INSTRUCTIONS, /say that is fine and move on/);
+  assert.match(AMBER_INSTRUCTIONS, /Still save the enquiry if either answer is missing/);
   assert.match(spoken, /emailed to the team at hello@drivingschoolsolutions\.co\.uk/);
   assert.match(spoken, /Book a callback with a member of our team/);
   assert.match(spoken, /Leave a message that will be emailed to the team/);

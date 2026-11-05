@@ -304,6 +304,122 @@ test("every call is summarised once, tools still email, and the caller number is
   }
 });
 
+test("a driving-lesson enquiry stores a normalised postcode and theory test", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amber-lesson-"));
+  const restore = useEmailEnv(dir);
+  const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+    posts.push({ url, body });
+    if (url.includes("api.x.ai")) {
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "Sam Taylor asked about driving lessons." } }] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response("ok", { status: 200 });
+  }) as typeof fetch;
+
+  try {
+    const ws = fakeSocket();
+    joinCall(
+      { callId: "call_lesson", from: "<sip:+447700900111@pstn.twilio.com>" },
+      {
+        connect: () => ws as unknown as WebSocket,
+        now: () => new Date("2026-11-05T13:03:00.000Z"),
+        lookupMemory: async () => undefined,
+      },
+    );
+    ws.emit("open");
+    ws.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "response.function_call_arguments.done",
+          call_id: "tool-lesson",
+          name: "save_lead",
+          arguments: JSON.stringify({
+            name: "Sam Taylor",
+            postcode: "sm52ab",
+            theory_test_status: "yes",
+            interest: "Driving lessons",
+          }),
+        }),
+      ),
+    );
+    await waitFor(() => posts.some((post) => String(post.body.subject ?? "").startsWith("Amber: new lead")));
+    ws.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "response.function_call_arguments.done",
+          call_id: "tool-rough",
+          name: "leave_message",
+          arguments: JSON.stringify({
+            name: "Sam Taylor",
+            message: "Please call about lessons.",
+            postcode: "near the high street",
+            theory_test: "not sure",
+          }),
+        }),
+      ),
+    );
+    await waitFor(() => posts.some((post) => String(post.body.subject ?? "").startsWith("Amber: message")));
+    ws.emit("close", 1000, Buffer.from(""));
+
+    await waitFor(() => posts.filter((post) => String(post.body.subject ?? "").startsWith("Amber call summary:")).length === 1);
+
+    const leadMail = posts.find((post) => String(post.body.subject ?? "").startsWith("Amber: new lead"));
+    assert.ok(leadMail);
+    assert.match(String(leadMail.body.text), /Postcode: SM5 2AB/);
+    assert.match(String(leadMail.body.text), /Theory test: Passed/);
+
+    const messageMail = posts.find((post) => String(post.body.subject ?? "").startsWith("Amber: message"));
+    assert.ok(messageMail);
+    assert.match(String(messageMail.body.text), /Postcode: NEAR THE HIGH STREET/);
+    assert.match(String(messageMail.body.text), /Theory test: Not sure/);
+
+    const summary = posts.find((post) => String(post.body.subject ?? "").startsWith("Amber call summary:"));
+    assert.ok(summary);
+    assert.match(String(summary.body.text), /Postcode: SM5 2AB/);
+    assert.match(String(summary.body.text), /Theory test: Passed/);
+    assert.match(String(summary.body.text), /Postcode: NEAR THE HIGH STREET/);
+    assert.match(String(summary.body.text), /Theory test: Not sure/);
+
+    const leads = (await fs.readFile(path.join(dir, "leads.jsonl"), "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const savedLead = leads.find((record) => record.type === "lead");
+    const savedMessage = leads.find((record) => record.type === "message");
+    assert.ok(savedLead);
+    assert.ok(savedMessage);
+    assert.equal(savedLead.postcode, "SM5 2AB");
+    assert.equal(savedLead.theory_test_status, "Passed");
+    assert.equal(savedMessage.postcode, "NEAR THE HIGH STREET");
+    assert.equal(savedMessage.theory_test_status, "Not sure");
+
+    const savedCall = JSON.parse(await fs.readFile(path.join(dir, "calls.jsonl"), "utf8")) as {
+      tools: Array<{ name: string; arguments: Record<string, unknown> }>;
+    };
+    const leadTool = savedCall.tools.find((tool) => tool.name === "save_lead");
+    const messageTool = savedCall.tools.find((tool) => tool.name === "leave_message");
+    assert.ok(leadTool);
+    assert.ok(messageTool);
+    assert.equal(leadTool.arguments.postcode, "SM5 2AB");
+    assert.equal(leadTool.arguments.theory_test_status, "Passed");
+    assert.equal(messageTool.arguments.postcode, "NEAR THE HIGH STREET");
+    assert.equal(messageTool.arguments.theory_test_status, "Not sure");
+    assert.equal(messageTool.arguments.theory_test, undefined);
+  } finally {
+    globalThis.fetch = original;
+    restore();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a caller who says nothing still produces one summary email", async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amber-silent-"));
   const restore = useEmailEnv(dir);
