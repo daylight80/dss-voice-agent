@@ -92,6 +92,32 @@ test("finds a name that sits before a large newer tail of other calls", async ()
   });
 });
 
+test("a newer lead that includes postcode and theory status still supplies the name", async () => {
+  await withDir(async (dir) => {
+    await fs.writeFile(
+      path.join(dir, "leads.jsonl"),
+      [
+        JSON.stringify({
+          type: "lead",
+          name: "Old Name",
+          phone: "+447700900687",
+          receivedAt: "2026-01-01T12:00:00.000Z",
+        }),
+        JSON.stringify({
+          type: "lead",
+          name: "Sam Taylor",
+          phone: "+447700900687",
+          postcode: "SM5 2AB",
+          theory_test_status: "Passed",
+          receivedAt: "2026-11-04T12:00:00.000Z",
+        }),
+      ].join("\n") + "\n",
+    );
+    const memory = await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 });
+    assert.equal(memory?.name, "Sam Taylor");
+  });
+});
+
 test("missing files and a slow lookup do not throw", async () => {
   await withDir(async (dir) => {
     assert.equal(await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 500 }), undefined);

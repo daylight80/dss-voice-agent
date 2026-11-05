@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { config } from "./config.js";
 import { AMBER_TOOLS } from "./tools.js";
+import { applyEnquiryDetails } from "./enquiry-details.js";
 import { notifyGrant, persistRecord, type LeadRecord } from "./notify.js";
 import { callerNumberFrom, resolveToolPhone } from "./caller-number.js";
 import { lookupCallerMemory, type CallerMemory } from "./caller-memory.js";
@@ -313,6 +314,7 @@ async function handleToolCall(
     const given = typeof args.phone === "string" ? args.phone : undefined;
     const phone = resolveToolPhone(given, callerNumber);
     if (phone) args.phone = phone;
+    applyEnquiryDetails(args);
   }
 
   console.log(`[call ${meta.callId}] tool ${name}`, args);
@@ -369,6 +371,8 @@ async function saveTyped(
     name: str(args.name),
     phone: str(args.phone),
     email: str(args.email),
+    postcode: str(args.postcode),
+    theory_test_status: str(args.theory_test_status),
     interest: str(args.interest),
     school_or_area: str(args.school_or_area),
     preferred_time: str(args.preferred_time),

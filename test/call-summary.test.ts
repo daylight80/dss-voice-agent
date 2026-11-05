@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { outcomeFor, renderCallSummaryEmail, summariseTranscript, type CapturedTool } from "../src/call-summary.js";
+import {
+  formatToolDetails,
+  outcomeFor,
+  renderCallSummaryEmail,
+  summariseTranscript,
+  type CapturedTool,
+} from "../src/call-summary.js";
 import { formatDuration, formatLondonDateTime } from "../src/london-time.js";
 
 const started = new Date("2026-11-05T13:03:00.000Z");
@@ -39,6 +45,32 @@ test("outcome lists every successful tool and ignores a failed transfer", () => 
     ]),
     "Transferred to Grant",
   );
+});
+
+test("summary details show a lesson enquiry postcode and theory test", () => {
+  const text = formatToolDetails([
+    {
+      name: "save_lead",
+      args: {
+        name: "Sam Taylor",
+        phone: "+447700900111",
+        postcode: "SM5 2AB",
+        theory_test_status: "Passed",
+      },
+      result: { ok: true },
+      at: started.toISOString(),
+    },
+  ]);
+  assert.match(text, /Lead saved/);
+  assert.match(text, /Postcode: SM5 2AB/);
+  assert.match(text, /Theory test: Passed/);
+
+  const older = formatToolDetails([
+    { name: "save_lead", args: { name: "Jane" }, result: { ok: true }, at: started.toISOString() },
+  ]);
+  assert.equal(older, "Lead saved\n  Name: Jane");
+  assert.doesNotMatch(older, /Postcode/);
+  assert.doesNotMatch(older, /Theory/);
 });
 
 test("summary email for a real call", () => {
