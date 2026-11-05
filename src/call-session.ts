@@ -104,7 +104,7 @@ export function joinCall(meta: IncomingCallMeta, options?: JoinOptions): void {
     else console.log(`[call ${meta.callId}] ${msg}`);
   };
 
-  if (callerNumber) log(`caller number ${callerNumber}`);
+  if (callerNumber) log("caller number present");
   else log("caller number unknown");
 
   let memory: CallerMemory | undefined;
@@ -116,7 +116,7 @@ export function joinCall(meta: IncomingCallMeta, options?: JoinOptions): void {
         .then((found) => {
           memory = found;
           memorySettled = true;
-          if (found) log(`remembered caller ${found.name}`);
+          if (found) log("remembered caller");
           return found;
         })
         .catch((err: unknown) => {
@@ -243,7 +243,7 @@ export function joinCall(meta: IncomingCallMeta, options?: JoinOptions): void {
     }
 
     if (type.startsWith("input_audio_buffer.")) {
-      if (type === "input_audio_buffer.dtmf_event_received") log("DTMF", event.event);
+      if (type === "input_audio_buffer.dtmf_event_received") log("DTMF");
       return;
     }
   });
@@ -315,7 +315,7 @@ async function handleToolCall(
     if (phone) args.phone = phone;
   }
 
-  console.log(`[call ${meta.callId}] tool ${name}`, args);
+  console.log(`[call ${meta.callId}] tool ${name}`);
 
   let result: Record<string, unknown>;
 

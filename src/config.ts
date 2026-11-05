@@ -40,8 +40,23 @@ export const config = {
   get dataDir(): string {
     return path.resolve(process.env.DATA_DIR?.trim() || "./data");
   },
+  /**
+   * How long personal data on disk is kept. Unset, blank, or invalid values
+   * (not a finite number, or negative) use 30 days. Zero is allowed.
+   */
+  get dataRetentionDays(): number {
+    return parseRetentionDays(process.env.DATA_RETENTION_DAYS);
+  },
   logLevel: process.env.LOG_LEVEL?.trim() || "info",
 };
+
+export function parseRetentionDays(raw: string | undefined): number {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return 30;
+  const days = Number(trimmed);
+  if (!Number.isFinite(days) || days < 0) return 30;
+  return days;
+}
 
 export function hasEmailConfigured(): boolean {
   if (config.emailWebhookUrl) return true;

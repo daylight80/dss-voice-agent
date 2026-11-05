@@ -89,7 +89,7 @@ test("per-call instructions confirm the number and remember a name without editi
   const named = buildGreetingInstructions({ name: "Jane Smith", calledAt: "2026-10-02T15:00:00.000Z" }, at);
   assert.match(
     named,
-    /Good Afternoon\. Thank you for calling Driving School Solutions, Amber speaking\. Hi Jane, nice to hear from you again\. How may I assist you\?/,
+    /Good Afternoon\. Thank you for calling Driving School Solutions, Amber speaking\. Just so you know calls are recorded and transcribed for quality and training\. Hi Jane, nice to hear from you again\. How may I assist you today\?/,
   );
   assert.match(buildCallInstructions({
     callerNumber: "+447700900687",

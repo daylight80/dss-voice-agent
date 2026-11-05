@@ -22,17 +22,16 @@ export function buildCallInstructions(input: {
 
 /**
  * Opening response instructions.
- * Unknown callers keep Grant's exact greeting. A remembered name extends that
- * opening for this call only; AMBER_GREETING_HINT is left unchanged.
+ * Unknown callers use the standard opening. A remembered name is inserted
+ * before the question, after the recording notice. AMBER_GREETING_HINT itself
+ * is left unchanged.
  */
 export function buildGreetingInstructions(memory: CallerMemory | undefined, now = new Date()): string {
   if (!memory) return AMBER_GREETING_HINT(now);
   const first = firstName(memory.name);
   const line = amberOpeningLine(now);
-  const warm = line.replace(
-    / how may I assist you\?$/,
-    `. Hi ${first}, nice to hear from you again. How may I assist you?`,
-  );
-  const script = warm === line ? `${line} Hi ${first}, nice to hear from you again.` : warm;
+  const question = "How may I assist you today?";
+  const named = `Hi ${first}, nice to hear from you again. ${question}`;
+  const script = line.endsWith(question) ? `${line.slice(0, -question.length)}${named}` : `${line} ${named}`;
   return `Open with this exact script and no other words: "${script}"`;
 }

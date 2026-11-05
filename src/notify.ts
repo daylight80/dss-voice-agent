@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import nodemailer from "nodemailer";
 import { config, hasEmailConfigured } from "./config.js";
+import { withDataLock } from "./data-lock.js";
 
 export type LeadRecord = {
   type: "lead" | "callback" | "message";
@@ -34,10 +35,12 @@ export async function persistCallRecord(record: unknown): Promise<string> {
 }
 
 async function appendDataFile(filename: string, record: unknown): Promise<string> {
-  await ensureDataDir();
-  const file = path.join(config.dataDir, filename);
-  await fs.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
-  return file;
+  return withDataLock(async () => {
+    await ensureDataDir();
+    const file = path.join(config.dataDir, filename);
+    await fs.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
+    return file;
+  });
 }
 
 type EmailMessage = {
@@ -105,7 +108,7 @@ export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolea
     subject: subjectFor(record),
     text: bodyFor(record),
     record,
-    logContext: { type: record.type, name: record.name },
+    logContext: { type: record.type },
   });
 }
 
