@@ -71,7 +71,7 @@ export function joinCall(meta: IncomingCallMeta): void {
       JSON.stringify({
         type: "response.create",
         response: {
-          instructions: AMBER_GREETING_HINT,
+          instructions: AMBER_GREETING_HINT(),
         },
       }),
     );
