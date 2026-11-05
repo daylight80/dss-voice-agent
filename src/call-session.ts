@@ -1,8 +1,12 @@
 import WebSocket from "ws";
 import { config } from "./config.js";
-import { AMBER_GREETING_HINT, AMBER_INSTRUCTIONS } from "./amber-prompt.js";
 import { AMBER_TOOLS } from "./tools.js";
 import { notifyGrant, persistRecord, type LeadRecord } from "./notify.js";
+import { callerNumberFrom, resolveToolPhone } from "./caller-number.js";
+import { lookupCallerMemory, type CallerMemory } from "./caller-memory.js";
+import { buildCallInstructions, buildGreetingInstructions } from "./call-context.js";
+import { TranscriptLog } from "./transcript.js";
+import { publishCallSummary, type CapturedTool } from "./call-summary.js";
 
 export type IncomingCallMeta = {
   callId: string;
@@ -10,89 +14,190 @@ export type IncomingCallMeta = {
   to?: string;
 };
 
-type PendingFunctionCalls = Map<
-  string,
-  { name: string; arguments: string; done: boolean }
->;
+export type JoinOptions = {
+  /** Test hook. Production opens the xAI realtime socket for this call. */
+  connect?: (url: string) => WebSocket;
+  /** Test hook. Defaults to the current time. */
+  now?: () => Date;
+  /** Test hook. Defaults to a short scan of DATA_DIR that never blocks the greeting. */
+  lookupMemory?: (e164: string) => Promise<CallerMemory | undefined>;
+};
+
+const activeCalls = new Set<string>();
+const summarisedCalls = new Set<string>();
+
+function beginCall(callId: string): boolean {
+  if (activeCalls.has(callId) || summarisedCalls.has(callId)) return false;
+  activeCalls.add(callId);
+  return true;
+}
+
+function releaseCall(callId: string): void {
+  activeCalls.delete(callId);
+}
+
+/** Returns true the first time this call is allowed to send its summary. */
+function claimCallSummary(callId: string): boolean {
+  if (summarisedCalls.has(callId)) return false;
+  summarisedCalls.add(callId);
+  activeCalls.delete(callId);
+  if (summarisedCalls.size > 5000) {
+    const oldest = summarisedCalls.values().next().value;
+    if (oldest) summarisedCalls.delete(oldest);
+  }
+  return true;
+}
+
+const KEYTERMS = [
+  "Driving School Solutions",
+  "DualControl",
+  "ADI",
+  "Grant Robery",
+  "Amber",
+  "Google Business Profile",
+];
+
+function sessionUpdate(instructions: string) {
+  return {
+    type: "session.update",
+    session: {
+      voice: config.voice,
+      instructions,
+      turn_detection: { type: "server_vad" },
+      tools: AMBER_TOOLS,
+      audio: {
+        input: {
+          transcription: {
+            // Partials so a hangup mid-sentence is still in the transcript.
+            // Prompt, greeting and voice are unchanged.
+            model: "grok-transcribe",
+            language_hint: "en",
+            keyterms: KEYTERMS,
+          },
+        },
+      },
+      replace: {
+        DualControl: "Dual Control",
+        ADI: "A D I",
+        GBP: "G B P",
+      },
+    },
+  };
+}
 
 /**
  * Join an inbound SIP call over the xAI realtime WebSocket and run Amber.
+ * The realtime socket closes when the caller hangs up, the transfer completes,
+ * or the leg drops. That close is the end of the call: one summary is emailed then.
  */
-export function joinCall(meta: IncomingCallMeta): void {
-  const url = `wss://api.x.ai/v1/realtime?call_id=${encodeURIComponent(meta.callId)}`;
-  const ws = new WebSocket(url, {
-    headers: { Authorization: `Bearer ${config.xaiApiKey()}` },
-  });
+export function joinCall(meta: IncomingCallMeta, options?: JoinOptions): void {
+  if (!beginCall(meta.callId)) {
+    console.log(`[call ${meta.callId}] duplicate join ignored`);
+    return;
+  }
 
-  const pending = new Map<string, Promise<unknown>>();
-  let closed = false;
-
+  const clock = options?.now ?? (() => new Date());
+  const startedAt = clock();
+  const callerNumber = callerNumberFrom(meta.from);
   const log = (msg: string, extra?: unknown) => {
     if (extra !== undefined) console.log(`[call ${meta.callId}] ${msg}`, extra);
     else console.log(`[call ${meta.callId}] ${msg}`);
   };
 
+  if (callerNumber) log(`caller number ${callerNumber}`);
+  else log("caller number unknown");
+
+  let memory: CallerMemory | undefined;
+  let memorySettled = !callerNumber;
+  const lookup = options?.lookupMemory ?? ((e164: string) => lookupCallerMemory(e164));
+  const memoryPromise: Promise<CallerMemory | undefined> = callerNumber
+    ? Promise.resolve()
+        .then(() => lookup(callerNumber))
+        .then((found) => {
+          memory = found;
+          memorySettled = true;
+          if (found) log(`remembered caller ${found.name}`);
+          return found;
+        })
+        .catch((err: unknown) => {
+          memorySettled = true;
+          console.error(`[call ${meta.callId}] caller memory lookup failed`, err);
+          return undefined;
+        })
+    : Promise.resolve(undefined);
+
+  let ws: WebSocket;
+  try {
+    const url = `wss://api.x.ai/v1/realtime?call_id=${encodeURIComponent(meta.callId)}`;
+    ws = options?.connect
+      ? options.connect(url)
+      : new WebSocket(url, {
+          headers: { Authorization: `Bearer ${config.xaiApiKey()}` },
+        });
+  } catch (err) {
+    releaseCall(meta.callId);
+    console.error(`[call ${meta.callId}] failed to open WebSocket`, err);
+    return;
+  }
+
+  const transcript = new TranscriptLog();
+  const tools: CapturedTool[] = [];
+  const pending = new Map<string, Promise<unknown>>();
+  let closed = false;
+  let sessionSent = false;
+
+  const sendInstructions = () => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    const instructions = buildCallInstructions({ callerNumber, memory });
+    if (!sessionSent) {
+      ws.send(JSON.stringify(sessionUpdate(instructions)));
+      sessionSent = true;
+      return;
+    }
+    // Name memory arrived after the greeting. Update instructions only.
+    ws.send(JSON.stringify({ type: "session.update", session: { instructions } }));
+  };
+
   ws.on("open", () => {
     log("WebSocket open — sending session.update");
-    ws.send(
-      JSON.stringify({
-        type: "session.update",
-        session: {
-          voice: config.voice,
-          instructions: AMBER_INSTRUCTIONS,
-          turn_detection: { type: "server_vad" },
-          tools: AMBER_TOOLS,
-          audio: {
-            input: {
-              transcription: {
-                language_hint: "en",
-                keyterms: [
-                  "Driving School Solutions",
-                  "DualControl",
-                  "ADI",
-                  "Grant Robery",
-                  "Amber",
-                  "Google Business Profile",
-                ],
-              },
-            },
-          },
-          replace: {
-            DualControl: "Dual Control",
-            ADI: "A D I",
-            GBP: "G B P",
-          },
-        },
-      }),
-    );
-
-    // Greet first so the caller is not left in silence.
+    sendInstructions();
+    // Greet immediately. Memory that is not ready yet must not hold this up.
     ws.send(
       JSON.stringify({
         type: "response.create",
         response: {
-          instructions: AMBER_GREETING_HINT(),
+          instructions: buildGreetingInstructions(memory, startedAt),
         },
       }),
     );
+
+    if (!memorySettled) {
+      void memoryPromise.then((found) => {
+        if (!found || closed || ws.readyState !== WebSocket.OPEN) return;
+        log("caller memory arrived after the greeting; instructions updated");
+        sendInstructions();
+      });
+    }
   });
 
   ws.on("message", (data) => {
     let event: Record<string, unknown>;
     try {
-      event = JSON.parse(data.toString());
+      event = JSON.parse(data.toString()) as Record<string, unknown>;
     } catch {
       log("Non-JSON message ignored");
       return;
     }
 
     const type = String(event.type ?? "");
-    if (
-      type === "response.output_audio.delta" ||
-      type === "response.output_audio_transcript.delta" ||
-      type === "response.function_call_arguments.delta"
-    ) {
-      return; // noisy
+    if (type === "response.output_audio.delta" || type === "response.function_call_arguments.delta") {
+      return;
+    }
+
+    try {
+      transcript.ingest(event);
+    } catch (err) {
+      console.error(`[call ${meta.callId}] transcript event failed`, err);
     }
 
     if (type === "error") {
@@ -101,56 +206,99 @@ export function joinCall(meta: IncomingCallMeta): void {
     }
 
     if (type === "response.function_call_arguments.done") {
-      const callId = String(event.call_id ?? "");
+      const toolCallId = String(event.call_id ?? "");
       const name = String(event.name ?? "");
       const argsRaw = String(event.arguments ?? "{}");
       pending.set(
-        callId,
-        handleToolCall(ws, meta, name, callId, argsRaw).catch((err) => {
-          console.error(`[call ${meta.callId}] tool error`, err);
-          return { ok: false, error: String(err) };
-        }),
+        toolCallId,
+        (async () => {
+          const args = parseArgs(argsRaw);
+          try {
+            const result = await handleToolCall(ws, meta, name, toolCallId, args, callerNumber);
+            tools.push({ name, args, result: asResult(result), at: new Date().toISOString() });
+            return result;
+          } catch (err) {
+            console.error(`[call ${meta.callId}] tool error`, err);
+            const result = { ok: false, error: String(err) };
+            tools.push({ name, args, result, at: new Date().toISOString() });
+            return result;
+          }
+        })(),
       );
       return;
     }
 
-    if (type === "response.done") {
-      // Parallel tool calls: wait for all outstanding tool results before continuing.
-      // response.create is sent inside each tool handler after its own output.
-      return;
-    }
+    if (type === "response.done") return;
 
     if (
       type === "session.updated" ||
       type === "session.created" ||
       type === "conversation.created" ||
       type === "response.created" ||
-      type === "response.output_audio_transcript.done"
+      type === "response.output_audio_transcript.done" ||
+      type === "conversation.item.input_audio_transcription.completed"
     ) {
       log(type);
       return;
     }
 
     if (type.startsWith("input_audio_buffer.")) {
-      if (type === "input_audio_buffer.dtmf_event_received") {
-        log("DTMF", event.event);
-      }
+      if (type === "input_audio_buffer.dtmf_event_received") log("DTMF", event.event);
       return;
     }
   });
 
-  ws.on("close", (code, reason) => {
+  ws.on("close", (code: number, reason: Buffer) => {
     closed = true;
-    log(`WebSocket closed ${code} ${reason.toString()}`);
+    log(`WebSocket closed ${code} ${reason?.toString?.() ?? ""}`);
+    if (!claimCallSummary(meta.callId)) return;
+    const endedAt = clock();
+    const inFlight = Array.from(pending.values());
+    // The call is already over. Summarise off the socket so email cannot delay it.
+    setImmediate(() => {
+      void (async () => {
+        try {
+          await Promise.race([
+            Promise.allSettled(inFlight),
+            new Promise((resolve) => setTimeout(resolve, 8000)),
+          ]);
+          await publishCallSummary({
+            callId: meta.callId,
+            from: meta.from,
+            to: meta.to,
+            callerNumber,
+            startedAt,
+            endedAt,
+            lines: transcript.lines(),
+            tools: [...tools],
+          });
+        } catch (err) {
+          console.error(`[call ${meta.callId}] call summary failed`, err);
+        }
+      })();
+    });
   });
 
   ws.on("error", (err) => {
     console.error(`[call ${meta.callId}] WebSocket error`, err);
   });
+}
 
-  // Keep a reference so GC does not drop the socket while the call is live.
-  void pending;
-  void closed;
+function parseArgs(argsRaw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(argsRaw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // The model sent arguments that are not a JSON object.
+  }
+  return {};
+}
+
+function asResult(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
+  return value as Record<string, unknown>;
 }
 
 async function handleToolCall(
@@ -158,13 +306,13 @@ async function handleToolCall(
   meta: IncomingCallMeta,
   name: string,
   toolCallId: string,
-  argsRaw: string,
+  args: Record<string, unknown>,
+  callerNumber: string | undefined,
 ): Promise<unknown> {
-  let args: Record<string, unknown> = {};
-  try {
-    args = JSON.parse(argsRaw) as Record<string, unknown>;
-  } catch {
-    args = {};
+  if (name === "save_lead" || name === "book_callback" || name === "leave_message") {
+    const given = typeof args.phone === "string" ? args.phone : undefined;
+    const phone = resolveToolPhone(given, callerNumber);
+    if (phone) args.phone = phone;
   }
 
   console.log(`[call ${meta.callId}] tool ${name}`, args);
@@ -236,6 +384,7 @@ async function saveTyped(
     saved_to: file,
     emailed: notify.emailed,
     detail: notify.detail,
+    ...(record.phone ? { phone: record.phone } : {}),
     message_for_caller:
       type === "callback"
         ? "Callback request saved. Confirm to the caller that Grant will ring them back."

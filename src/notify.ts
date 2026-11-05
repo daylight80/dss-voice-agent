@@ -25,15 +25,32 @@ async function ensureDataDir(): Promise<void> {
 }
 
 export async function persistRecord(record: LeadRecord): Promise<string> {
+  return appendDataFile("leads.jsonl", record);
+}
+
+/** One JSON line per call, including hangups, under DATA_DIR/calls.jsonl. */
+export async function persistCallRecord(record: unknown): Promise<string> {
+  return appendDataFile("calls.jsonl", record);
+}
+
+async function appendDataFile(filename: string, record: unknown): Promise<string> {
   await ensureDataDir();
-  const file = path.join(config.dataDir, "leads.jsonl");
+  const file = path.join(config.dataDir, filename);
   await fs.appendFile(file, `${JSON.stringify(record)}\n`, "utf8");
   return file;
 }
 
-export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolean; detail: string }> {
-  const subject = subjectFor(record);
-  const body = bodyFor(record);
+type EmailMessage = {
+  subject: string;
+  text: string;
+  record: unknown;
+  logContext: Record<string, unknown>;
+};
+
+export async function deliverEmail(
+  message: EmailMessage,
+): Promise<{ emailed: boolean; detail: string }> {
+  const { subject, text: body, record } = message;
 
   if (config.emailWebhookUrl) {
     const res = await fetch(config.emailWebhookUrl, {
@@ -75,12 +92,21 @@ export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolea
 
   console.warn(
     "[notify] No email configured (set EMAIL_WEBHOOK_URL or SMTP_* + NOTIFY_TO_EMAIL). Record saved to disk only.",
-    { type: record.type, name: record.name },
+    message.logContext,
   );
   return {
     emailed: false,
     detail: "Logged only — configure EMAIL_WEBHOOK_URL or SMTP_*",
   };
+}
+
+export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolean; detail: string }> {
+  return deliverEmail({
+    subject: subjectFor(record),
+    text: bodyFor(record),
+    record,
+    logContext: { type: record.type, name: record.name },
+  });
 }
 
 function subjectFor(record: LeadRecord): string {

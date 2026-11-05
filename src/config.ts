@@ -15,20 +15,31 @@ export const config = {
   voice: process.env.XAI_VOICE?.trim() || "eve",
   dssPhoneNumber: process.env.DSS_PHONE_NUMBER?.trim() || "+442081941993",
   grantTransferNumber: () => required("GRANT_TRANSFER_NUMBER"),
-  notifyToEmail: process.env.NOTIFY_TO_EMAIL?.trim() || "",
-  notifyFromEmail:
-    process.env.NOTIFY_FROM_EMAIL?.trim() ||
-    "amber@drivingschoolsolutions.co.uk",
-  emailWebhookUrl: process.env.EMAIL_WEBHOOK_URL?.trim() || "",
-  smtp: {
-    host: process.env.SMTP_HOST?.trim() || "",
-    port: Number(process.env.SMTP_PORT ?? 587),
-    secure: process.env.SMTP_SECURE === "true",
-    user: process.env.SMTP_USER?.trim() || "",
-    pass: process.env.SMTP_PASS?.trim() || "",
+  get notifyToEmail(): string {
+    return process.env.NOTIFY_TO_EMAIL?.trim() || "";
+  },
+  get notifyFromEmail(): string {
+    return (
+      process.env.NOTIFY_FROM_EMAIL?.trim() ||
+      "amber@drivingschoolsolutions.co.uk"
+    );
+  },
+  get emailWebhookUrl(): string {
+    return process.env.EMAIL_WEBHOOK_URL?.trim() || "";
+  },
+  get smtp() {
+    return {
+      host: process.env.SMTP_HOST?.trim() || "",
+      port: Number(process.env.SMTP_PORT ?? 587),
+      secure: process.env.SMTP_SECURE === "true",
+      user: process.env.SMTP_USER?.trim() || "",
+      pass: process.env.SMTP_PASS?.trim() || "",
+    };
   },
   publicBaseUrl: process.env.PUBLIC_BASE_URL?.trim() || "",
-  dataDir: path.resolve(process.env.DATA_DIR?.trim() || "./data"),
+  get dataDir(): string {
+    return path.resolve(process.env.DATA_DIR?.trim() || "./data");
+  },
   logLevel: process.env.LOG_LEVEL?.trim() || "info",
 };
 
