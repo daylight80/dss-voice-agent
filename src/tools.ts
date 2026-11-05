@@ -30,7 +30,7 @@ export const AMBER_TOOLS = [
     type: "function" as const,
     name: "book_callback",
     description:
-      "Book a callback with Grant Robery. Prefer a concrete preferred time if the caller gives one.",
+      "Book a callback with a member of our team. Prefer a concrete preferred time if the caller gives one.",
     parameters: {
       type: "object",
       properties: {
@@ -38,7 +38,7 @@ export const AMBER_TOOLS = [
         phone: { type: "string" },
         preferred_time: {
           type: "string",
-          description: "When they would like Grant to call back",
+          description: "When they would like a member of our team to call back",
         },
         notes: { type: "string" },
       },
@@ -48,7 +48,7 @@ export const AMBER_TOOLS = [
   {
     type: "function" as const,
     name: "leave_message",
-    description: "Leave a message that will be emailed to Grant Robery.",
+    description: "Leave a message that will be emailed to the team.",
     parameters: {
       type: "object",
       properties: {
@@ -63,7 +63,7 @@ export const AMBER_TOOLS = [
     type: "function" as const,
     name: "transfer_to_grant",
     description:
-      "Transfer this live call to Grant Robery. Tell the caller you are putting them through first, then call this tool.",
+      "Transfer this live call to a member of our team. Tell the caller you are putting them through first, then call this tool.",
     parameters: {
       type: "object",
       properties: {

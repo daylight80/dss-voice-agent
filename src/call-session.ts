@@ -387,10 +387,10 @@ async function saveTyped(
     ...(record.phone ? { phone: record.phone } : {}),
     message_for_caller:
       type === "callback"
-        ? "Callback request saved. Confirm to the caller that Grant will ring them back."
+        ? "Callback request saved. Confirm to the caller that a member of our team will ring them back."
         : type === "message"
-          ? "Message saved and will be emailed to Grant. Confirm that to the caller."
-          : "Lead saved. Thank the caller and confirm Grant or the team will follow up.",
+          ? "Message saved and will be emailed to the team. Confirm that to the caller."
+          : "Lead saved. Thank the caller and confirm a member of our team will follow up.",
   };
 }
 
