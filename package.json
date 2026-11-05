@@ -1,0 +1,30 @@
+{
+  "name": "dss-voice-agent",
+  "version": "1.0.0",
+  "description": "Driving School Solutions voice receptionist (Amber) — xAI Speech-to-Speech over SIP",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "nodemailer": "^10.3.1",
+    "svix": "^1.64.1",
+    "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.10",
+    "@types/nodemailer": "^8.0.2",
+    "@types/ws": "^8.18.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
