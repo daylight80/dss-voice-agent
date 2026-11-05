@@ -2,7 +2,7 @@
 
 TypeScript webhook service that answers **+442081941993** via xAI Speech-to-Speech over SIP. Amber greets callers, answers FAQs, qualifies leads, books callbacks, takes messages, and can transfer to Grant Robery.
 
-Tagline: **Turn local searches into pupils.**
+Tagline: **Turn local searches into driving students.**
 
 This is also the foundation for the **AI Voice Receptionist** product sold to ADIs.
 
