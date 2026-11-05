@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { callerMemoryLine, lookupCallerMemory } from "../src/caller-memory.js";
+import { CALLER_NAMES_FILE, callerMemoryLine, lookupCallerMemory } from "../src/caller-memory.js";
 
 async function withDir(fn: (dir: string) => Promise<void>): Promise<void> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amber-memory-"));
@@ -89,6 +89,70 @@ test("finds a name that sits before a large newer tail of other calls", async ()
     await fs.writeFile(path.join(dir, "leads.jsonl"), `${lines.join("\n")}\n`);
     const memory = await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 });
     assert.equal(memory?.name, "Priya Shah");
+  });
+});
+
+test("caller-names.json can outlive the call that supplied the name", async () => {
+  await withDir(async (dir) => {
+    const lastHeard = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+    await fs.writeFile(
+      path.join(dir, "calls.jsonl"),
+      `${JSON.stringify({
+        type: "call_summary",
+        callerName: "Old Name",
+        callerNumber: "+447700900687",
+        startedAt: "2026-01-01T12:00:00.000Z",
+      })}\n`,
+    );
+    await fs.writeFile(
+      path.join(dir, CALLER_NAMES_FILE),
+      `${JSON.stringify({
+        "+447700900687": { name: "Jane Smith", nameAt: "2026-01-01T12:00:00.000Z", lastHeardAt: lastHeard },
+      })}\n`,
+    );
+    const memory = await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 });
+    assert.deepEqual(memory, { name: "Jane Smith", calledAt: lastHeard });
+  });
+});
+
+test("a newer named call beats an older caller-names entry", async () => {
+  await withDir(async (dir) => {
+    const older = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+    const newer = new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString();
+    await fs.writeFile(
+      path.join(dir, CALLER_NAMES_FILE),
+      `${JSON.stringify({
+        "+447700900687": { name: "Jane Smith", nameAt: older, lastHeardAt: older },
+      })}\n`,
+    );
+    await fs.writeFile(
+      path.join(dir, "calls.jsonl"),
+      `${JSON.stringify({
+        type: "call_summary",
+        callerName: "Bob Adeyemi",
+        callerNumber: "+447700900687",
+        startedAt: newer,
+      })}\n`,
+    );
+    const memory = await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 });
+    assert.equal(memory?.name, "Bob Adeyemi");
+    assert.equal(memory?.calledAt, newer);
+  });
+});
+
+test("an expired caller-names entry is ignored and a bad file does not throw", async () => {
+  await withDir(async (dir) => {
+    const expired = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000).toISOString();
+    await fs.writeFile(
+      path.join(dir, CALLER_NAMES_FILE),
+      `${JSON.stringify({
+        "+447700900687": { name: "Jane Smith", nameAt: expired, lastHeardAt: expired },
+      })}\n`,
+    );
+    assert.equal(await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 }), undefined);
+
+    await fs.writeFile(path.join(dir, CALLER_NAMES_FILE), "{not json");
+    assert.equal(await lookupCallerMemory("+447700900687", { dataDir: dir, timeoutMs: 2000 }), undefined);
   });
 });
 

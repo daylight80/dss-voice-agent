@@ -13,7 +13,7 @@ This is also the foundation for the **AI Voice Receptionist** product sold to AD
 3. xAI POSTs a signed `realtime.call.incoming` event to `POST /webhooks/xai/incoming`.
 4. This service verifies the signature, opens `wss://api.x.ai/v1/realtime?call_id=…`, sends `session.update` (Amber prompt + tools) and `response.create` so she greets first.
 5. Tool calls (`save_lead`, `book_callback`, `leave_message`, `transfer_to_grant`) append JSONL under `DATA_DIR` and email Grant when SMTP or `EMAIL_WEBHOOK_URL` is set. Those immediate emails stay, because they are the thing to act on (a new lead, a callback, a message).
-6. When the realtime socket closes — caller hung up, transfer completed, or the leg dropped — Amber emails **one** summary of that call to `NOTIFY_TO_EMAIL`, including silent hangups. The record is appended to `$DATA_DIR/calls.jsonl`. A short summary is written with the xAI API; if that fails, the transcript is still emailed.
+6. When the realtime socket closes — caller hung up, transfer completed, or the leg dropped — Amber emails **one** summary of that call to `NOTIFY_TO_EMAIL`, including silent hangups. The record is appended to `$DATA_DIR/calls.jsonl`. A short summary is written with the xAI API; if that fails, the transcript is still emailed. On startup, and once a day after that, lines older than `DATA_RETENTION_DAYS` (default 30) are deleted. A caller's name is kept until that many days after the last call from their number, in `$DATA_DIR/caller-names.json`, without the transcript.
 7. If the SIP From header has a real number, Amber is told to confirm it (last three digits) instead of asking. A withheld or unknown number changes nothing. When a previous lead or call summary stored a name for that number, she is told to greet them by name and check it is them. The lookup does not hold up the greeting.
 
 ## Endpoints
@@ -122,6 +122,8 @@ Every tool write appends one JSON line to `$DATA_DIR/leads.jsonl`.
 
 Every call, including a hangup with no speech, appends one JSON line to `$DATA_DIR/calls.jsonl` and sends a summary email (`Amber call summary: <number> at <time>`, London time). The summary carries the caller number, start time, duration, outcome, tool details, a short plain-English summary, and the full transcript. If a tool captured the caller's name, that name is stored on the call record so the next call from that number can greet them. On Render, `DATA_DIR=/data` is the `amber-leads` disk (see `render.yaml`), so these files survive restarts.
 
+Those files are personal data. `DATA_RETENTION_DAYS` (default 30) is how long a call or lead line stays, measured from that record's own time. A line with no usable timestamp is dated the first time the purge sees it, then kept for one period. Caller-name memory uses the last call from that number: when the named line is deleted, the name and number alone are kept in `caller-names.json` until 30 days after the most recent call, then deleted too. The purge logs counts only.
+
 Notification priority:
 
 1. `EMAIL_WEBHOOK_URL` — POST JSON `{ to, from, subject, text, record }`
@@ -160,6 +162,8 @@ voice-agent/
     ├── call-summary.ts   # Summary text, email body, xAI fallback
     ├── caller-number.ts  # SIP/TEL From header → E.164
     ├── caller-memory.ts  # Previous name for this number
+    ├── retention.ts      # Delete personal data older than DATA_RETENTION_DAYS
+    ├── data-lock.ts      # Serialise JSONL appends with the purge rewrite
     ├── transcript.ts     # Caller and Amber transcript
     ├── london-time.ts    # Europe/London formatting
     ├── webhook-verify.ts # Standard Webhooks / Svix verify

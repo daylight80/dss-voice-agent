@@ -6,9 +6,19 @@ import { formatLondonDay } from "./london-time.js";
 
 export type CallerMemory = {
   name: string;
-  /** ISO timestamp of the record that supplied the name. */
+  /**
+   * ISO time used as "last call" in the greeting.
+   * A call or lead line contributes that record's own time.
+   * caller-names.json contributes the most recent contact from the number.
+   */
   calledAt: string;
 };
+
+/** Minimal name memory written by the retention purge. No transcript. */
+export const CALLER_NAMES_FILE = "caller-names.json";
+
+const CONTACT_FIELDS = ["startedAt", "receivedAt", "endedAt"] as const;
+const NUMBER_FIELDS = ["callerNumber", "phone", "from"] as const;
 
 const NOT_A_CALLER_NAME = new Set([
   "transfer_to_grant",
@@ -40,6 +50,61 @@ export function firstName(name: string): string {
   const cleaned = name.trim().replace(/\s+/g, " ");
   const [first] = cleaned.split(" ");
   return first || cleaned;
+}
+
+export function memoryNumbers(record: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const key of NUMBER_FIELDS) {
+    const value = record[key];
+    if (typeof value !== "string") continue;
+    const e164 = callerNumberFrom(value);
+    if (!e164 || seen.has(e164)) continue;
+    seen.add(e164);
+    out.push(e164);
+  }
+  return out;
+}
+
+export function memoryName(record: Record<string, unknown>): string | undefined {
+  let name = cleanCallerName(record.callerName) ?? cleanCallerName(record.name);
+  if (!name && Array.isArray(record.tools)) {
+    for (let i = record.tools.length - 1; i >= 0; i--) {
+      const tool = record.tools[i];
+      if (!tool || typeof tool !== "object") continue;
+      const args = (tool as { arguments?: unknown }).arguments;
+      if (!args || typeof args !== "object") continue;
+      name = cleanCallerName((args as { name?: unknown }).name);
+      if (name) break;
+    }
+  }
+  return name;
+}
+
+/** Latest usable contact time on a call or lead record. Invalid strings are skipped. */
+export function latestContactAt(record: Record<string, unknown>): string | undefined {
+  let best: string | undefined;
+  let bestMs = Number.NEGATIVE_INFINITY;
+  for (const key of CONTACT_FIELDS) {
+    const value = record[key];
+    if (typeof value !== "string" || !value.trim()) continue;
+    const ms = Date.parse(value);
+    if (!Number.isFinite(ms) || ms < bestMs) continue;
+    best = value;
+    bestMs = ms;
+  }
+  return best;
+}
+
+/** First usable contact time, which is what a JSONL line reports as calledAt. */
+export function memoryCalledAt(record: Record<string, unknown>): string | undefined {
+  for (const key of CONTACT_FIELDS) {
+    const value = record[key];
+    if (typeof value !== "string" || !value.trim()) continue;
+    if (!Number.isFinite(Date.parse(value))) continue;
+    return value;
+  }
+  return undefined;
 }
 
 export function callerMemoryLine(name: string, calledAt: Date): string {
@@ -95,11 +160,12 @@ async function searchDataDir(
 ): Promise<CallerMemory | undefined> {
   const deadline = Date.now() + timeoutMs;
   const stop = () => Date.now() > deadline;
-  const [fromLeads, fromCalls] = await Promise.all([
+  const [fromLeads, fromCalls, fromNames] = await Promise.all([
     latestNamedCall(path.join(dataDir, "leads.jsonl"), e164, stop),
     latestNamedCall(path.join(dataDir, "calls.jsonl"), e164, stop),
+    nameMemoryFromStore(path.join(dataDir, CALLER_NAMES_FILE), e164, stop),
   ]);
-  return newer(fromLeads, fromCalls);
+  return newer(newer(fromLeads, fromCalls), fromNames);
 }
 
 function newer(a: CallerMemory | undefined, b: CallerMemory | undefined): CallerMemory | undefined {
@@ -113,28 +179,53 @@ function newer(a: CallerMemory | undefined, b: CallerMemory | undefined): Caller
 }
 
 function recordMemory(record: Record<string, unknown>, e164: string): CallerMemory | undefined {
-  const numbers = [record.callerNumber, record.phone, record.from];
-  const matched = numbers.some((value) => typeof value === "string" && callerNumberFrom(value) === e164);
-  if (!matched) return undefined;
+  if (!memoryNumbers(record).includes(e164)) return undefined;
+  const name = memoryName(record);
+  const at = memoryCalledAt(record);
+  if (!name || !at) return undefined;
+  return { name, calledAt: at };
+}
 
-  let name = cleanCallerName(record.callerName) ?? cleanCallerName(record.name);
-  if (!name && Array.isArray(record.tools)) {
-    for (let i = record.tools.length - 1; i >= 0; i--) {
-      const tool = record.tools[i];
-      if (!tool || typeof tool !== "object") continue;
-      const args = (tool as { arguments?: unknown }).arguments;
-      if (!args || typeof args !== "object") continue;
-      name = cleanCallerName((args as { name?: unknown }).name);
-      if (name) break;
-    }
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Name kept after the call that supplied it was deleted. Ignored once
+ * lastHeardAt is older than the retention period, so a missed purge cannot
+ * keep greeting with an expired name. A missing or unreadable file just
+ * means there is no extra memory; the JSONL scan still runs.
+ */
+async function nameMemoryFromStore(
+  file: string,
+  e164: string,
+  shouldStop: () => boolean,
+): Promise<CallerMemory | undefined> {
+  if (shouldStop()) return undefined;
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") return undefined;
+    console.error("[caller-memory] name store could not be read");
+    return undefined;
   }
-  if (!name) return undefined;
+  if (shouldStop()) return undefined;
 
-  const at = [record.startedAt, record.receivedAt, record.endedAt].find(
-    (value) => typeof value === "string" && value.trim(),
-  );
-  if (typeof at !== "string") return undefined;
-  if (!Number.isFinite(Date.parse(at))) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = raw.trim() ? (JSON.parse(raw) as unknown) : undefined;
+  } catch {
+    return undefined;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+  const entry = (parsed as Record<string, unknown>)[e164];
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return undefined;
+  const record = entry as Record<string, unknown>;
+  const name = cleanCallerName(record.name);
+  const at = typeof record.lastHeardAt === "string" ? record.lastHeardAt : undefined;
+  if (!name || !at || !Number.isFinite(Date.parse(at))) return undefined;
+  const ageMs = Date.now() - Date.parse(at);
+  if (ageMs > config.dataRetentionDays * DAY_MS) return undefined;
   return { name, calledAt: at };
 }
 

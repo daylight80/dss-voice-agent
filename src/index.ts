@@ -2,7 +2,9 @@ import express from "express";
 import { config } from "./config.js";
 import { verifyXaiWebhook } from "./webhook-verify.js";
 import { joinCall } from "./call-session.js";
+import { callerNumberFrom } from "./caller-number.js";
 import { hasEmailConfigured } from "./notify.js";
+import { startPersonalDataRetention } from "./retention.js";
 
 const app = express();
 
@@ -64,7 +66,10 @@ app.post("/webhooks/xai/incoming", async (req, res) => {
   const from = event.data?.sip_headers?.find((h) => h.name.toLowerCase() === "from")?.value;
   const to = event.data?.sip_headers?.find((h) => h.name.toLowerCase() === "to")?.value;
 
-  console.log("[webhook] incoming call", { callId, from, to });
+  console.log("[webhook] incoming call", {
+    callId,
+    callerNumber: callerNumberFrom(from) ? "present" : "absent",
+  });
 
   // Acknowledge quickly; join the realtime socket asynchronously.
   res.status(200).json({ ok: true, call_id: callId });
@@ -92,4 +97,5 @@ app.listen(config.port, "0.0.0.0", () => {
       "Email not configured — leads will be written to DATA_DIR only. Set EMAIL_WEBHOOK_URL or SMTP_* + NOTIFY_TO_EMAIL.",
     );
   }
+  startPersonalDataRetention();
 });

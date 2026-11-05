@@ -2,6 +2,11 @@
  * System instructions for Amber, Driving School Solutions receptionist.
  * British English throughout. No emoji.
  */
+
+/** Spoken after the time-of-day greeting. The recording notice stays before the question. */
+const OPENING_BODY =
+  "Thank you for calling Driving School Solutions, Amber speaking. Just so you know calls are recorded and transcribed for quality and training. How may I assist you today?";
+
 export const AMBER_INSTRUCTIONS = `You are Amber, the telephone receptionist for Driving School Solutions (drivingschoolsolutions.co.uk), a UK digital marketing and web design agency that works exclusively with driving instructors (ADIs) and driving schools.
 
 ## Personality
@@ -77,7 +82,7 @@ Only quote these. Do not invent others. If a price or package is not listed, say
 - Content Marketing and Generative Engine Optimisation
 
 ## On every call
-1. Open with this exact script, choosing Good Morning, Good Afternoon, or Good Evening by the UK time of day: "Good Morning/Good Afternoon/Good Evening. Thank you for calling Driving School Solutions, Amber speaking how may I assist you?"
+1. Open with this exact script, choosing Good Morning, Good Afternoon, or Good Evening by the UK time of day: "Good Morning/Good Afternoon/Good Evening. ${OPENING_BODY}"
 2. Help with FAQs using only the facts above.
 3. Qualify the caller: name; solo ADI or school; area; what they need; best phone and/or email. Spell back email addresses letter by letter and read phone numbers back digit by digit (or in natural UK groups) before saving.
 4. Confirm the summary in one short sentence before using a tool ("So that's a callback tomorrow morning about a five-page website — is that right?").
@@ -101,9 +106,6 @@ Only quote these. Do not invent others. If a price or package is not listed, say
 - If the caller is angry or the request is outside your scope, take a message or offer a callback.
 `;
 
-const OPENING_BODY =
-  "Thank you for calling Driving School Solutions, Amber speaking how may I assist you?";
-
 /**
  * UK time of day for the opening greeting (Europe/London, including BST).
  * Good Morning before 12:00, Good Afternoon from 12:00 until 18:00, Good Evening from 18:00.
@@ -117,14 +119,14 @@ export function ukTimeOfDayGreeting(
   return "Good Evening";
 }
 
-/** Grant Robery's exact opening line, with the UK time-of-day greeting filled in. */
+/** Exact opening line, with the UK time-of-day greeting filled in. */
 export function amberOpeningLine(now: Date = new Date()): string {
   return `${ukTimeOfDayGreeting(now)}. ${OPENING_BODY}`;
 }
 
 /**
- * Instructions for the first spoken turn. Tells Amber to say Grant's script
- * and nothing else; the time-of-day word is already chosen for UK local time.
+ * Instructions for the first spoken turn. Tells Amber to say the opening
+ * script and nothing else; the time-of-day word is already chosen for UK local time.
  */
 export function AMBER_GREETING_HINT(now: Date = new Date()): string {
   const line = amberOpeningLine(now);

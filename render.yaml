@@ -44,5 +44,7 @@ services:
         value: eve
       - key: DATA_DIR
         value: /data
+      - key: DATA_RETENTION_DAYS
+        value: "30"
       - key: NODE_ENV
         value: production
