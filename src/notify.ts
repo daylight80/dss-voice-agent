@@ -4,9 +4,18 @@ import nodemailer from "nodemailer";
 import { config, hasEmailConfigured } from "./config.js";
 import { withDataLock } from "./data-lock.js";
 
+export const LEAD_TYPES = ["lead", "callback", "message", "gbp_audit"] as const;
+export type LeadType = (typeof LEAD_TYPES)[number];
+
+export const LEAD_SOURCES = ["phone", "website_chat"] as const;
+export type LeadSource = (typeof LEAD_SOURCES)[number];
+
 export type LeadRecord = {
-  type: "lead" | "callback" | "message";
+  type: LeadType;
+  /** Absent on Amber's phone records, which are treated as phone. */
+  source?: LeadSource;
   callId: string;
+  conversationId?: string;
   from?: string;
   to?: string;
   receivedAt: string;
@@ -15,11 +24,27 @@ export type LeadRecord = {
   email?: string;
   interest?: string;
   school_or_area?: string;
+  /** "solo ADI" or "driving school" when the visitor said which they are. */
+  business_type?: string;
+  business_name?: string;
+  town?: string;
+  gbp_url?: string;
   preferred_time?: string;
   message?: string;
   notes?: string;
   reason?: string;
 };
+
+export function leadTypeLabel(type: string | undefined): string {
+  if (type === "gbp_audit") return "GBP audit request";
+  if (type === "lead" || type === "callback" || type === "message") return type;
+  return type || "lead";
+}
+
+/** Phone records written before Mirra have no source field. */
+export function leadSourceOf(record: { source?: unknown }): LeadSource {
+  return record.source === "website_chat" ? "website_chat" : "phone";
+}
 
 async function ensureDataDir(): Promise<void> {
   await fs.mkdir(config.dataDir, { recursive: true });
@@ -32,6 +57,61 @@ export async function persistRecord(record: LeadRecord): Promise<string> {
 /** One JSON line per call, including hangups, under DATA_DIR/calls.jsonl. */
 export async function persistCallRecord(record: unknown): Promise<string> {
   return appendDataFile("calls.jsonl", record);
+}
+
+export type LeadQuery = {
+  source?: LeadSource;
+  type?: LeadType;
+  /** Include records whose receivedAt is at or after this ISO time. */
+  since?: string;
+  limit?: number;
+  dataDir?: string;
+};
+
+/**
+ * Newest matching lines from DATA_DIR/leads.jsonl.
+ * Used by the authenticated follow-up read, and safe to call while calls are appending.
+ */
+export async function listLeads(query: LeadQuery = {}): Promise<Record<string, unknown>[]> {
+  const limit = clampLimit(query.limit);
+  const sinceMs = query.since ? Date.parse(query.since) : Number.NaN;
+  return withDataLock(async () => {
+    const file = path.join(query.dataDir ?? config.dataDir, "leads.jsonl");
+    let text = "";
+    try {
+      text = await fs.readFile(file, "utf8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw err;
+    }
+    const matched: Record<string, unknown>[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      const record = parsed as Record<string, unknown>;
+      if (query.type && record.type !== query.type) continue;
+      if (query.source && leadSourceOf(record) !== query.source) continue;
+      if (query.since) {
+        const at = typeof record.receivedAt === "string" ? Date.parse(record.receivedAt) : Number.NaN;
+        if (!Number.isFinite(at) || !Number.isFinite(sinceMs) || at < sinceMs) continue;
+      }
+      matched.push(record);
+    }
+    matched.reverse();
+    return matched.slice(0, limit);
+  });
+}
+
+function clampLimit(limit: number | undefined): number {
+  if (limit == null || !Number.isFinite(limit)) return 50;
+  return Math.max(0, Math.min(200, Math.floor(limit)));
 }
 
 async function appendDataFile(filename: string, record: unknown): Promise<string> {
@@ -113,25 +193,40 @@ export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolea
 }
 
 function subjectFor(record: LeadRecord): string {
+  const who = record.source === "website_chat" ? "Mirra" : "Amber";
+  const whoFrom = oneLine(record.name ?? record.business_name) || (record.source === "website_chat" ? "visitor" : "caller");
   switch (record.type) {
     case "callback":
-      return `Amber: callback request from ${record.name ?? "caller"}`;
+      return `${who}: callback request from ${whoFrom}`;
     case "message":
-      return `Amber: message from ${record.name ?? "caller"}`;
+      return `${who}: message from ${whoFrom}`;
+    case "gbp_audit":
+      return `${who}: Google Business Profile audit request from ${whoFrom}`;
     default:
-      return `Amber: new lead — ${record.name ?? "caller"}`;
+      return `${who}: new lead — ${whoFrom}`;
   }
 }
 
+function oneLine(value: string | undefined): string {
+  if (!value) return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
 function bodyFor(record: LeadRecord): string {
+  const website = record.source === "website_chat";
   const lines = [
-    `Type: ${record.type}`,
+    `Type: ${leadTypeLabel(record.type)}`,
+    website ? "Source: website chat" : null,
     `Received (UTC): ${record.receivedAt}`,
-    `Call ID: ${record.callId}`,
+    website ? `Conversation: ${record.conversationId ?? record.callId}` : `Call ID: ${record.callId}`,
     record.from ? `Caller From: ${record.from}` : null,
     record.name ? `Name: ${record.name}` : null,
     record.phone ? `Phone: ${record.phone}` : null,
     record.email ? `Email: ${record.email}` : null,
+    record.business_type ? `Business: ${record.business_type}` : null,
+    record.business_name ? `Business name: ${record.business_name}` : null,
+    record.town ? `Town: ${record.town}` : null,
+    record.gbp_url ? `Google Business Profile: ${record.gbp_url}` : null,
     record.school_or_area ? `School / area: ${record.school_or_area}` : null,
     record.interest ? `Interest: ${record.interest}` : null,
     record.preferred_time ? `Preferred callback: ${record.preferred_time}` : null,
@@ -139,7 +234,7 @@ function bodyFor(record: LeadRecord): string {
     record.notes ? `Notes: ${record.notes}` : null,
     record.reason ? `Transfer reason: ${record.reason}` : null,
     "",
-    "— Amber, Driving School Solutions",
+    website ? "— Mirra, Driving School Solutions website chat" : "— Amber, Driving School Solutions",
   ];
   return lines.filter((l) => l !== null).join("\n");
 }
