@@ -46,7 +46,7 @@ The bubble is one script tag. It loads on every page, uses a shadow root so it d
 ```
 
 3. Clear any page cache (Elementor, the caching plugin, or Cloudflare).
-4. Open the site in a private window. Mirra's round face sits at the bottom right. The opening line is: "Hi, I'm Mirra. How can I help you?"
+4. Open the site in a private window. Mirra's round face sits at the bottom left, clear of the reCAPTCHA badge. The opening line is: "Hi, I'm Mirra. How can I help you?"
 
 The chat API only accepts pages whose `Origin` is `https://drivingschoolsolutions.co.uk` or `https://www.drivingschoolsolutions.co.uk`, plus localhost for testing. Set `MIRRA_ALLOWED_ORIGINS` to replace that site list (include every origin you still want, comma-separated). Set `MIRRA_ALLOW_LOCALHOST=false` to refuse localhost. A request with no `Origin`, or from another site, is rejected.
 
