@@ -6,7 +6,7 @@
 import { AGENCY, SERVICE_NAMES, sharedAgencyFacts } from "./agency-facts.js";
 import { formatLondonDateTime } from "./london-time.js";
 
-export const MIRRA_OPENING = "Hi, I'm Mirra from Driving School Solutions. How can I help?";
+export const MIRRA_OPENING = "Hi, I'm Mirra. How can I help you?";
 
 export function contactFallback(): string {
   return `I'm sorry, I can't complete that just now. Please call ${AGENCY.phoneDisplay} or email ${AGENCY.email} and a member of the team will help.`;
