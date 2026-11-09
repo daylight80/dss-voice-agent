@@ -23,7 +23,7 @@ import { buildXaiBody, readModelOutput, type Completer } from "../src/mirra-xai.
 import { listLeads, notifyGrant, type LeadRecord } from "../src/notify.js";
 
 const APPROVED_AMBER_SCRIPT =
-  "97f4a3efd77bc7ff94dabe2c8f614ab961b75322bd0504d204a657620b2fb9da";
+  "fa867076186a26611df2c557ffa381eedcee5715b3e6571cfe391796717db28b";
 
 test("Amber's approved script is unchanged and Mirra quotes the same facts", () => {
   const hash = crypto.createHash("sha256").update(AMBER_INSTRUCTIONS).digest("hex");

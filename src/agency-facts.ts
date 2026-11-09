@@ -10,7 +10,7 @@ export const AGENCY = {
   site: "drivingschoolsolutions.co.uk",
   siteUrl: "https://drivingschoolsolutions.co.uk",
   tagline: "Turn local searches into driving students.",
-  phoneDisplay: "07356 281 666",
+  phoneDisplay: "020 8194 1993",
   email: "hello@drivingschoolsolutions.co.uk",
   office: "10 Waterloo Road, Sutton, London SM1 4LS",
   hours:
