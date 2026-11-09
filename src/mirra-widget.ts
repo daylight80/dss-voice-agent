@@ -296,7 +296,7 @@ function widgetMarkup(maxChars: number): string {
   all: initial;
   position: fixed;
   z-index: 2147483000;
-  right: max(16px, env(safe-area-inset-right));
+  left: max(16px, env(safe-area-inset-left));
   bottom: max(16px, env(safe-area-inset-bottom));
   font-family: Urbanist, "Segoe UI", sans-serif;
   font-size: 16px;
@@ -314,7 +314,7 @@ button, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 .launcher, .panel { position: absolute; }
 .launcher {
-  right: 0;
+  left: 0;
   bottom: 0;
   width: 56px;
   height: 56px;
@@ -377,7 +377,7 @@ button { cursor: pointer; }
   50% { opacity: 1; }
 }
 .panel {
-  right: 0;
+  left: 0;
   bottom: 72px;
   width: min(380px, calc(100vw - 32px));
   height: min(560px, calc(100dvh - 96px));

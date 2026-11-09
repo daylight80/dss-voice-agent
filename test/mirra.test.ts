@@ -267,6 +267,9 @@ test("the widget is one script, scoped, and the chat endpoint enforces origin an
   assert.match(js, /#0b3665/);
   assert.match(js, new RegExp(MIRRA_OPENING.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   assert.match(js, /Chat with Mirra/);
+  assert.match(js, /left: max\(16px, env\(safe-area-inset-left\)\)/);
+  assert.match(js, /\.panel \{[^}]*left: 0;/);
+  assert.doesNotMatch(js, /safe-area-inset-right/);
   assert.match(js, /class=\\"avatar\\"|class="avatar"/);
   assert.match(js, /mirra-blink/);
   assert.match(js, /mirra-breathe/);
