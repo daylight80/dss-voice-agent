@@ -109,7 +109,15 @@ export function mirraWidgetJs(options?: { maxMessageChars?: number }): string {
       var item = document.createElement("div");
       item.className = "msg " + (message.role === "user" ? "user" : "assistant");
       item.setAttribute("role", "article");
-      appendWithLinks(item, message.text);
+      if (message.role === "user") {
+        appendWithLinks(item, message.text);
+      } else {
+        item.appendChild(avatarClone());
+        var bubble = document.createElement("div");
+        bubble.className = "bubble";
+        appendWithLinks(bubble, message.text);
+        item.appendChild(bubble);
+      }
       log.appendChild(item);
       if (stick !== false) log.scrollTop = log.scrollHeight;
     }
@@ -118,9 +126,14 @@ export function mirraWidgetJs(options?: { maxMessageChars?: number }): string {
       if (open) panel.removeAttribute("hidden");
       else panel.setAttribute("hidden", "");
       launcher.setAttribute("aria-expanded", open ? "true" : "false");
-      launcher.setAttribute("aria-label", open ? "Close chat with Mirra" : "Open chat with Mirra");
       if (open && !state.closed) input.focus();
       if (!open) launcher.focus();
+    }
+
+    function avatarClone() {
+      var tpl = shadow.querySelector("#mirra-avatar");
+      if (!tpl) return document.createElement("span");
+      return tpl.content.cloneNode(true);
     }
 
     function setBusy(busy) {
@@ -128,6 +141,20 @@ export function mirraWidgetJs(options?: { maxMessageChars?: number }): string {
       input.disabled = busy || state.closed;
       sendButton.disabled = busy || state.closed;
       status.textContent = busy ? "Mirra is replying." : "";
+      host.classList.toggle("is-thinking", busy);
+      var pending = log.querySelector(".msg.thinking");
+      if (busy) {
+        if (!pending) {
+          var row = document.createElement("div");
+          row.className = "msg assistant thinking";
+          row.setAttribute("aria-hidden", "true");
+          row.appendChild(avatarClone());
+          log.appendChild(row);
+          log.scrollTop = log.scrollHeight;
+        }
+      } else if (pending) {
+        pending.remove();
+      }
     }
 
     launcher.addEventListener("click", function () {
@@ -234,6 +261,34 @@ export function mirraWidgetJs(options?: { maxMessageChars?: number }): string {
 `;
 }
 
+/** Original face: a blue orb whose eyes are rear-view mirrors. Not a copy of any logo. */
+const AVATAR_SVG = `<svg class="avatar" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+  <g class="avatar-bob">
+    <circle class="avatar-face-shape" cx="32" cy="32" r="25.5" fill="#4786ee" stroke="#ff7851" stroke-width="3"></circle>
+    <circle cx="22.5" cy="19" r="6.5" fill="#ffffff" opacity="0.18"></circle>
+    <g class="eyes">
+      <g class="eye">
+        <g transform="rotate(-7 22 31)">
+          <rect x="13" y="25" width="18" height="11" rx="3.6" fill="#0b3665"></rect>
+          <rect class="eye-glass" x="15" y="27" width="14" height="7" rx="2.2" fill="#f4f7fb"></rect>
+          <rect x="16.2" y="28.1" width="4" height="3" rx="1" fill="#8559e6"></rect>
+          <rect x="20.4" y="35.4" width="3.2" height="3.6" rx="1.4" fill="#0b3665"></rect>
+        </g>
+      </g>
+      <g class="eye">
+        <g transform="rotate(7 42 31)">
+          <rect x="33" y="25" width="18" height="11" rx="3.6" fill="#0b3665"></rect>
+          <rect class="eye-glass" x="35" y="27" width="14" height="7" rx="2.2" fill="#f4f7fb"></rect>
+          <rect x="43.4" y="28.1" width="4" height="3" rx="1" fill="#ffffff"></rect>
+          <circle class="signal" cx="47" cy="23.2" r="2.7" fill="#ff7851"></circle>
+          <rect x="40.4" y="35.4" width="3.2" height="3.6" rx="1.4" fill="#0b3665"></rect>
+        </g>
+      </g>
+    </g>
+    <path class="smile" d="M23.5 45.2c2.6 3.5 6 5.1 8.5 5.1s5.9-1.6 8.5-5.1" fill="none" stroke="#0b3665" stroke-width="2.3" stroke-linecap="round"></path>
+  </g>
+</svg>`;
+
 function widgetMarkup(maxChars: number): string {
   return `<style>
 @import url("https://fonts.googleapis.com/css2?family=Urbanist:wght@400;500;600;700&display=swap");
@@ -263,16 +318,64 @@ button { cursor: pointer; }
   bottom: 0;
   width: 56px;
   height: 56px;
+  padding: 0;
   border: 0;
   border-radius: 50%;
-  background: #4786ee;
+  background: transparent;
   color: #fff;
-  box-shadow: 0 8px 20px rgba(11, 54, 101, 0.28), 0 0 0 3px #ff7851;
+  box-shadow: 0 8px 18px rgba(11, 54, 101, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: visible;
 }
-.launcher svg { width: 28px; height: 28px; display: block; }
+.avatar { display: block; width: 28px; height: 28px; flex: none; overflow: visible; }
+.launcher .avatar { width: 56px; height: 56px; }
+.header .avatar { width: 36px; height: 36px; }
+.avatar-bob, .eyes, .eye {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.avatar-bob { animation: mirra-breathe 3.6s ease-in-out infinite; }
+.eyes { animation: mirra-glance 8s ease-in-out infinite; }
+.eye { animation: mirra-blink 5.8s ease-in-out infinite; }
+.signal { opacity: 0.55; }
+.launcher:hover { box-shadow: 0 12px 26px rgba(11, 54, 101, 0.4); }
+.launcher:hover .avatar-bob { animation-name: mirra-breathe-hover; }
+.launcher:hover .avatar-face-shape { fill: #6aa0f4; stroke-width: 4.5; }
+.launcher:active .avatar-bob { animation: none; transform: scale(0.94); }
+:host(.is-thinking) .launcher .avatar-bob,
+:host(.is-thinking) .header .avatar-bob,
+:host(.is-thinking) .thinking .avatar-bob { animation: mirra-breathe 1.4s ease-in-out infinite; }
+:host(.is-thinking) .launcher .eyes,
+:host(.is-thinking) .header .eyes,
+:host(.is-thinking) .thinking .eyes { animation: mirra-think 1.15s ease-in-out infinite; }
+:host(.is-thinking) .signal { animation: mirra-signal 1.15s ease-in-out infinite; }
+@keyframes mirra-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}
+@keyframes mirra-breathe-hover {
+  0%, 100% { transform: scale(1.06); }
+  50% { transform: scale(1.1); }
+}
+@keyframes mirra-glance {
+  0%, 72%, 100% { transform: translateX(0); }
+  80% { transform: translateX(-1.6px); }
+  88% { transform: translateX(1.5px); }
+}
+@keyframes mirra-blink {
+  0%, 84%, 100% { transform: scaleY(1); }
+  89%, 93% { transform: scaleY(0.08); }
+}
+@keyframes mirra-think {
+  0%, 100% { transform: translateX(-1.8px); }
+  50% { transform: translateX(1.8px); }
+}
+@keyframes mirra-signal {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
 .panel {
   right: 0;
   bottom: 72px;
@@ -293,11 +396,12 @@ button { cursor: pointer; }
   color: #fff;
   padding: 14px 16px 12px;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   border-top: 4px solid #ff7851;
 }
+.who { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .title { margin: 0; font-size: 18px; line-height: 1.2; font-weight: 700; color: #fff; }
 .subtitle { margin: 2px 0 0; font-size: 13px; color: #d6e4f7; }
 .close {
@@ -327,10 +431,21 @@ button { cursor: pointer; }
 }
 .msg.assistant {
   align-self: flex-start;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 92%;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+.msg.assistant .bubble {
   background: #f4f7fb;
   border: 1px solid #d5deea;
   border-left: 3px solid #8559e6;
   color: #0b3665;
+  padding: 10px 12px;
+  border-radius: 12px;
 }
 .msg.user { align-self: flex-end; background: #0b3665; color: #fff; }
 .msg a { color: inherit; }
@@ -383,17 +498,22 @@ textarea {
 :host :focus-visible { outline: 3px solid #8559e6; outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) {
   :host, :host * { transition: none !important; animation: none !important; }
+  .launcher:hover .avatar-bob,
+  .launcher:active .avatar-bob { transform: none; }
 }
 </style>
 <div class="launcher-wrap">
-  <button type="button" class="launcher" aria-expanded="false" aria-controls="mirra-panel" aria-label="Open chat with Mirra">
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4 5h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3.5V17H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"></path></svg>
+  <button type="button" class="launcher" aria-expanded="false" aria-controls="mirra-panel" aria-label="Chat with Mirra">
+    ${AVATAR_SVG}
   </button>
   <section id="mirra-panel" class="panel" role="dialog" aria-modal="false" aria-labelledby="mirra-title" hidden>
     <header class="header">
-      <div>
-        <h2 id="mirra-title" class="title">Mirra</h2>
-        <p class="subtitle">Driving School Solutions</p>
+      <div class="who">
+        ${AVATAR_SVG}
+        <div>
+          <h2 id="mirra-title" class="title">Mirra</h2>
+          <p class="subtitle">Driving School Solutions</p>
+        </div>
       </div>
       <button type="button" class="close">Close</button>
     </header>
@@ -406,5 +526,6 @@ textarea {
     <p class="note">Mirra is an AI assistant. Please don't send card details.</p>
     <div id="mirra-status" class="sr" role="status"></div>
   </section>
-</div>`;
+</div>
+<template id="mirra-avatar">${AVATAR_SVG}</template>`;
 }
