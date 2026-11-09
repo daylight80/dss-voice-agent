@@ -46,5 +46,15 @@ services:
         value: /data
       - key: DATA_RETENTION_DAYS
         value: "30"
+      - key: XAI_CHAT_MODEL
+        value: grok-4.7
+      - key: MIRRA_REASONING_EFFORT
+        value: low
+      - key: MIRRA_ALLOW_LOCALHOST
+        value: "true"
+      - key: MIRRA_ALLOWED_ORIGINS
+        sync: false
+      - key: LEADS_READ_TOKEN
+        sync: false
       - key: NODE_ENV
         value: production

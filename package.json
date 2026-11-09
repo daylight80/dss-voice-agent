@@ -1,7 +1,7 @@
 {
   "name": "dss-voice-agent",
   "version": "1.0.0",
-  "description": "Driving School Solutions voice receptionist (Amber) — xAI Speech-to-Speech over SIP",
+  "description": "Driving School Solutions: Amber voice receptionist and Mirra website chat",
   "private": true,
   "type": "module",
   "engines": {

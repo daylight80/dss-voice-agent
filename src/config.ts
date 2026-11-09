@@ -48,7 +48,49 @@ export const config = {
     return parseRetentionDays(process.env.DATA_RETENTION_DAYS);
   },
   logLevel: process.env.LOG_LEVEL?.trim() || "info",
+  /** Text model for Mirra. The voice path does not read this. */
+  get xaiChatModel(): string {
+    return process.env.XAI_CHAT_MODEL?.trim() || "grok-4.7";
+  },
+  /**
+   * grok-4.5 and newer reason by default at "high", which is slow for a chat
+   * bubble. "low" is the setting xAI recommends for simple tool calling.
+   */
+  get mirraReasoningEffort(): "low" | "medium" | "high" | "xhigh" {
+    const raw = process.env.MIRRA_REASONING_EFFORT?.trim().toLowerCase() || "low";
+    if (raw === "low" || raw === "medium" || raw === "high" || raw === "xhigh") return raw;
+    return "low";
+  },
+  /** Bearer token for GET /mirra/leads. Empty means the endpoint stays closed. */
+  get leadsReadToken(): string {
+    return process.env.LEADS_READ_TOKEN?.trim() || "";
+  },
+  /**
+   * Comma-separated origins allowed to call Mirra. Empty uses the live site.
+   * Localhost is added separately unless MIRRA_ALLOW_LOCALHOST=false.
+   */
+  get mirraAllowedOrigins(): string {
+    return process.env.MIRRA_ALLOWED_ORIGINS?.trim() || "";
+  },
+  get mirraAllowLocalhost(): boolean {
+    const raw = process.env.MIRRA_ALLOW_LOCALHOST?.trim().toLowerCase();
+    return raw !== "false" && raw !== "0";
+  },
+  get mirraMaxUserTurns(): number {
+    return clampInt(process.env.MIRRA_MAX_USER_TURNS, 16, 1, 40);
+  },
+  get mirraMaxMessageChars(): number {
+    return clampInt(process.env.MIRRA_MAX_MESSAGE_CHARS, 1500, 200, 4000);
+  },
 };
+
+function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const trimmed = raw?.trim() ?? "";
+  if (!trimmed) return fallback;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
 
 export function parseRetentionDays(raw: string | undefined): number {
   const trimmed = raw?.trim() ?? "";
