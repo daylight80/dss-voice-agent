@@ -140,7 +140,7 @@ test("a website enquiry is stored with Amber's leads and emailed on the same pat
   const previousHook = process.env.EMAIL_WEBHOOK_URL;
   const previousTo = process.env.NOTIFY_TO_EMAIL;
   const originalFetch = globalThis.fetch;
-  const posted: Array<{ subject?: string; text?: string; record?: LeadRecord }> = [];
+  const posted: Array<{ subject?: string; bcc?: string; text?: string; record?: LeadRecord }> = [];
   process.env.DATA_DIR = dir;
   process.env.EMAIL_WEBHOOK_URL = "https://example.test/hook";
   process.env.NOTIFY_TO_EMAIL = "grant@example.com";
@@ -191,6 +191,7 @@ test("a website enquiry is stored with Amber's leads and emailed on the same pat
     assert.match(posted[0]?.text ?? "", /Call ID: call_1/);
     assert.doesNotMatch(posted[0]?.text ?? "", /Source:/);
     assert.equal(posted[1]?.subject, "Mirra: Google Business Profile audit request from Sam Taylor");
+    assert.equal(posted[1]?.bcc, undefined);
     assert.match(posted[1]?.text ?? "", /Source: website chat/);
     assert.match(posted[1]?.text ?? "", /Type: GBP audit request/);
     assert.match(posted[1]?.text ?? "", /Town: Sutton/);

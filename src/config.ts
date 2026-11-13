@@ -82,6 +82,41 @@ export const config = {
   get mirraMaxMessageChars(): number {
     return clampInt(process.env.MIRRA_MAX_MESSAGE_CHARS, 1500, 200, 4000);
   },
+  /** Overrides NOTIFY_TO_EMAIL for Mirra only. Unset keeps the shared address. */
+  get mirraNotifyToEmail(): string {
+    return process.env.MIRRA_NOTIFY_TO_EMAIL?.trim() || "";
+  },
+  /** Extra copy for Mirra. Unset means no BCC, which is how Mirra sends today. */
+  get mirraNotifyBccEmail(): string {
+    return process.env.MIRRA_NOTIFY_BCC_EMAIL?.trim() || "";
+  },
+  /**
+   * Where ADI enquiry emails are addressed. Unset uses the school inbox
+   * published on formulajondrivingschool.co.uk.
+   */
+  get adiNotifyToEmail(): string {
+    return process.env.ADI_NOTIFY_TO_EMAIL?.trim() || "info@formulajondrivingschool.co.uk";
+  },
+  /**
+   * BCC for ADI enquiry emails. Unset uses NOTIFY_TO_EMAIL (the address Mirra
+   * uses). An empty value sends no BCC.
+   */
+  get adiNotifyBccEmail(): string {
+    const raw = process.env.ADI_NOTIFY_BCC_EMAIL;
+    if (raw === undefined) return process.env.NOTIFY_TO_EMAIL?.trim() || "";
+    return raw.trim();
+  },
+  /**
+   * Comma-separated origins allowed to call ADI. Empty uses the Formula Jon
+   * site. Localhost is separate, via ADI_ALLOW_LOCALHOST.
+   */
+  get adiAllowedOrigins(): string {
+    return process.env.ADI_ALLOWED_ORIGINS?.trim() || "";
+  },
+  get adiAllowLocalhost(): boolean {
+    const raw = process.env.ADI_ALLOW_LOCALHOST?.trim().toLowerCase();
+    return raw !== "false" && raw !== "0";
+  },
 };
 
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {

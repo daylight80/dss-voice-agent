@@ -33,6 +33,13 @@ export type LeadRecord = {
   message?: string;
   notes?: string;
   reason?: string;
+  /**
+   * Website-chat client. Absent on Amber's phone records and on Mirra's
+   * lines, which stay exactly as they were. ADI sets "adi".
+   */
+  client?: string;
+  /** "manual", "automatic", or "not sure" when a pupil said which they want. */
+  transmission?: string;
 };
 
 export function leadTypeLabel(type: string | undefined): string {
@@ -62,6 +69,11 @@ export async function persistCallRecord(record: unknown): Promise<string> {
 export type LeadQuery = {
   source?: LeadSource;
   type?: LeadType;
+  /**
+   * "mirra" keeps phone records and Mirra lines (no client, or client mirra)
+   * and skips other clients. Any other value matches that client only.
+   */
+  client?: string;
   /** Include records whose receivedAt is at or after this ISO time. */
   since?: string;
   limit?: number;
@@ -98,6 +110,7 @@ export async function listLeads(query: LeadQuery = {}): Promise<Record<string, u
       const record = parsed as Record<string, unknown>;
       if (query.type && record.type !== query.type) continue;
       if (query.source && leadSourceOf(record) !== query.source) continue;
+      if (query.client && !clientMatches(record, query.client)) continue;
       if (query.since) {
         const at = typeof record.receivedAt === "string" ? Date.parse(record.receivedAt) : Number.NaN;
         if (!Number.isFinite(at) || !Number.isFinite(sinceMs) || at < sinceMs) continue;
@@ -128,19 +141,26 @@ type EmailMessage = {
   text: string;
   record: unknown;
   logContext: Record<string, unknown>;
+  /** Overrides NOTIFY_TO_EMAIL for this message. Amber leaves it unset. */
+  to?: string;
+  /** Extra copy. Omitted when empty or the same as To. Amber sends none. */
+  bcc?: string;
 };
 
 export async function deliverEmail(
   message: EmailMessage,
 ): Promise<{ emailed: boolean; detail: string }> {
   const { subject, text: body, record } = message;
+  const recipient = message.to?.trim() || config.notifyToEmail || undefined;
+  const bcc = bccBesides(recipient, message.bcc);
 
   if (config.emailWebhookUrl) {
     const res = await fetch(config.emailWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        to: config.notifyToEmail || undefined,
+        to: recipient,
+        ...(bcc ? { bcc } : {}),
         from: config.notifyFromEmail,
         subject,
         text: body,
@@ -154,7 +174,7 @@ export async function deliverEmail(
     return { emailed: true, detail: `Posted to EMAIL_WEBHOOK_URL (${res.status})` };
   }
 
-  if (config.smtp.host && config.notifyToEmail) {
+  if (config.smtp.host && recipient) {
     const transporter = nodemailer.createTransport({
       host: config.smtp.host,
       port: config.smtp.port,
@@ -166,11 +186,12 @@ export async function deliverEmail(
     });
     await transporter.sendMail({
       from: config.notifyFromEmail,
-      to: config.notifyToEmail,
+      to: recipient,
+      bcc,
       subject,
       text: body,
     });
-    return { emailed: true, detail: `SMTP to ${config.notifyToEmail}` };
+    return { emailed: true, detail: bcc ? `SMTP to ${recipient} bcc ${bcc}` : `SMTP to ${recipient}` };
   }
 
   console.warn(
@@ -183,17 +204,29 @@ export async function deliverEmail(
   };
 }
 
-export async function notifyGrant(record: LeadRecord): Promise<{ emailed: boolean; detail: string }> {
+export async function notifyGrant(
+  record: LeadRecord,
+  options?: { to?: string; bcc?: string },
+): Promise<{ emailed: boolean; detail: string }> {
   return deliverEmail({
     subject: subjectFor(record),
     text: bodyFor(record),
     record,
-    logContext: { type: record.type },
+    to: options?.to,
+    bcc: options?.bcc,
+    logContext: { type: record.type, client: record.client },
   });
 }
 
+function bccBesides(to: string | undefined, bcc: string | undefined): string | undefined {
+  const copy = bcc?.trim();
+  if (!copy) return undefined;
+  if (to && copy.toLowerCase() === to.toLowerCase()) return undefined;
+  return copy;
+}
+
 function subjectFor(record: LeadRecord): string {
-  const who = record.source === "website_chat" ? "Mirra" : "Amber";
+  const who = subjectPrefix(record);
   const whoFrom = oneLine(record.name ?? record.business_name) || (record.source === "website_chat" ? "visitor" : "caller");
   switch (record.type) {
     case "callback":
@@ -205,6 +238,17 @@ function subjectFor(record: LeadRecord): string {
     default:
       return `${who}: new lead — ${whoFrom}`;
   }
+}
+
+function subjectPrefix(record: LeadRecord): string {
+  if (record.client === "adi") return "ADI (Formula Jon)";
+  return record.source === "website_chat" ? "Mirra" : "Amber";
+}
+
+function clientMatches(record: Record<string, unknown>, client: string): boolean {
+  const value = typeof record.client === "string" ? record.client : "";
+  if (client === "mirra") return value === "" || value === "mirra";
+  return value === client;
 }
 
 function oneLine(value: string | undefined): string {
@@ -227,14 +271,21 @@ function bodyFor(record: LeadRecord): string {
     record.business_name ? `Business name: ${record.business_name}` : null,
     record.town ? `Town: ${record.town}` : null,
     record.gbp_url ? `Google Business Profile: ${record.gbp_url}` : null,
-    record.school_or_area ? `School / area: ${record.school_or_area}` : null,
+    record.school_or_area
+      ? `${record.client === "adi" ? "Area" : "School / area"}: ${record.school_or_area}`
+      : null,
+    record.transmission ? `Manual or automatic: ${record.transmission}` : null,
     record.interest ? `Interest: ${record.interest}` : null,
     record.preferred_time ? `Preferred callback: ${record.preferred_time}` : null,
     record.message ? `Message: ${record.message}` : null,
     record.notes ? `Notes: ${record.notes}` : null,
     record.reason ? `Transfer reason: ${record.reason}` : null,
     "",
-    website ? "— Mirra, Driving School Solutions website chat" : "— Amber, Driving School Solutions",
+    record.client === "adi"
+      ? "— ADI, Formula Jon Driving School website chat"
+      : website
+        ? "— Mirra, Driving School Solutions website chat"
+        : "— Amber, Driving School Solutions",
   ];
   return lines.filter((l) => l !== null).join("\n");
 }

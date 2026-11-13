@@ -2,6 +2,7 @@
  * Turn a Mirra tool call into the same lead record Amber writes, tagged as website chat.
  */
 
+import { config } from "./config.js";
 import { containsCardNumber, redactCardNumbers } from "./mirra-guard.js";
 import { notifyGrant, persistRecord, type LeadRecord, type LeadType } from "./notify.js";
 
@@ -15,25 +16,48 @@ export type EnquiryResult = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-export async function saveMirraEnquiry(input: {
-  tool: string;
-  args: Record<string, unknown>;
-  conversationId: string;
-  now?: Date;
-  alreadySaved?: Set<string>;
-}): Promise<EnquiryResult> {
-  const type = typeForTool(input.tool);
+export type EnquiryProfile = {
+  /** Stored on the lead. Leave unset for Mirra so the JSON line stays unchanged. */
+  clientId?: string;
+  /** When set, only these tools are accepted. Mirra uses the built-in list. */
+  tools?: Record<string, LeadType>;
+  /** Pupil enquiries must name an area and manual or automatic. */
+  requireLessonDetails?: boolean;
+  /** To address. Unset uses NOTIFY_TO_EMAIL. */
+  notifyTo?: () => string | undefined;
+  /** BCC address. Unset sends no copy. */
+  notifyBcc?: () => string | undefined;
+  confirmations?: Partial<Record<LeadType, string>>;
+};
+
+/** Mirra's addresses. Empty env vars keep To on NOTIFY_TO_EMAIL and send no BCC. */
+const MIRRA_NOTIFY: EnquiryProfile = {
+  notifyTo: () => config.mirraNotifyToEmail || undefined,
+  notifyBcc: () => config.mirraNotifyBccEmail || undefined,
+};
+
+export async function saveMirraEnquiry(
+  input: {
+    tool: string;
+    args: Record<string, unknown>;
+    conversationId: string;
+    now?: Date;
+    alreadySaved?: Set<string>;
+  },
+  profile: EnquiryProfile = MIRRA_NOTIFY,
+): Promise<EnquiryResult> {
+  const type = typeForTool(input.tool, profile.tools);
   if (!type) {
     return { saved: false, duplicate: false, body: { ok: false, error: `Unknown tool: ${input.tool}` } };
   }
 
   const fields = readFields(input.args);
-  const problem = validate(type, fields);
+  const problem = validate(type, fields, profile);
   if (problem) {
     return { saved: false, duplicate: false, type, body: { ok: false, error: problem } };
   }
 
-  const record = toRecord(type, fields, input.conversationId, input.now ?? new Date());
+  const record = toRecord(type, fields, input.conversationId, input.now ?? new Date(), profile);
   const key = enquiryKey(record);
   if (input.alreadySaved?.has(key)) {
     return {
@@ -51,9 +75,11 @@ export async function saveMirraEnquiry(input: {
 
   await persistRecord(record);
   try {
-    await notifyGrant(record);
+    const to = profile.notifyTo?.()?.trim() || undefined;
+    const bcc = profile.notifyBcc?.()?.trim() || undefined;
+    await notifyGrant(record, to || bcc ? { to, bcc } : undefined);
   } catch (err) {
-    console.error("[mirra] email failed after the record was saved", err);
+    console.error(`[${profile.clientId ?? "mirra"}] email failed after the record was saved`, err);
   }
 
   return {
@@ -63,12 +89,13 @@ export async function saveMirraEnquiry(input: {
     key,
     body: {
       ok: true,
-      message_for_visitor: confirmation(type),
+      message_for_visitor: confirmation(type, profile),
     },
   };
 }
 
-function typeForTool(tool: string): LeadType | undefined {
+function typeForTool(tool: string, tools?: Record<string, LeadType>): LeadType | undefined {
+  if (tools) return tools[tool];
   switch (tool) {
     case "save_lead":
       return "lead";
@@ -96,6 +123,7 @@ type Fields = {
   preferred_time?: string;
   message?: string;
   notes?: string;
+  transmission?: string;
 };
 
 function readFields(args: Record<string, unknown>): Fields {
@@ -104,7 +132,8 @@ function readFields(args: Record<string, unknown>): Fields {
     phone: text(args.phone, 40),
     email: text(args.email, 200),
     interest: text(args.interest, 300),
-    school_or_area: text(args.school_or_area, 200),
+    school_or_area: text(args.school_or_area, 200) || text(args.area, 200),
+    transmission: normaliseTransmission(text(args.transmission, 80)),
     business_type: businessType(text(args.business_type, 80)),
     business_name: text(args.business_name, 160),
     town: text(args.town, 120),
@@ -124,6 +153,18 @@ function text(value: unknown, max: number): string | undefined {
   return cleaned.slice(0, max);
 }
 
+function normaliseTransmission(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const lower = value.toLowerCase();
+  if (/\b(not sure|unsure|either|undecided|don't know|do not know)\b/.test(lower)) return "not sure";
+  const automatic = /automatic|\bauto\b/.test(lower);
+  const manual = /manual/.test(lower);
+  if (automatic && manual) return "not sure";
+  if (automatic) return "automatic";
+  if (manual) return "manual";
+  return undefined;
+}
+
 function businessType(value: string | undefined): string | undefined {
   if (!value) return undefined;
   const lower = value.toLowerCase();
@@ -132,7 +173,7 @@ function businessType(value: string | undefined): string | undefined {
   return value;
 }
 
-function validate(type: LeadType, fields: Fields): string | undefined {
+function validate(type: LeadType, fields: Fields, profile: EnquiryProfile): string | undefined {
   if (fields.phone && containsCardNumber(fields.phone)) {
     return "That is not a phone number. Ask for a phone number, and do not store card details.";
   }
@@ -156,7 +197,7 @@ function validate(type: LeadType, fields: Fields): string | undefined {
   if (type === "callback") {
     if (!fields.phone) return "Ask for the phone number to call back on.";
     if (!fields.preferred_time) return "Ask when they would like the callback.";
-    return undefined;
+    return lessonDetails(fields, profile);
   }
 
   if (type === "message") {
@@ -164,7 +205,18 @@ function validate(type: LeadType, fields: Fields): string | undefined {
     return needContact(fields);
   }
 
-  return needContact(fields);
+  const contact = needContact(fields);
+  if (contact) return contact;
+  return lessonDetails(fields, profile);
+}
+
+function lessonDetails(fields: Fields, profile: EnquiryProfile): string | undefined {
+  if (!profile.requireLessonDetails) return undefined;
+  if (!fields.school_or_area) return "Ask which area or postcode they want lessons in before saving.";
+  if (!fields.transmission) {
+    return "Ask whether they want manual or automatic lessons before saving. Not sure is fine.";
+  }
+  return undefined;
 }
 
 function needContact(fields: Fields): string | undefined {
@@ -187,7 +239,13 @@ function checkUrl(value: string): string | undefined {
   return undefined;
 }
 
-function toRecord(type: LeadType, fields: Fields, conversationId: string, now: Date): LeadRecord {
+function toRecord(
+  type: LeadType,
+  fields: Fields,
+  conversationId: string,
+  now: Date,
+  profile: EnquiryProfile,
+): LeadRecord {
   const town = fields.town;
   const record: LeadRecord = {
     type,
@@ -208,6 +266,10 @@ function toRecord(type: LeadType, fields: Fields, conversationId: string, now: D
     message: fields.message,
     notes: fields.notes,
   };
+  if (profile.clientId) {
+    record.client = profile.clientId;
+    if (fields.transmission) record.transmission = fields.transmission;
+  }
   return record;
 }
 
@@ -223,12 +285,16 @@ function enquiryKey(record: LeadRecord): string {
     record.preferred_time,
     record.interest,
     record.gbp_url,
+    record.transmission,
+    record.client,
   ]
     .map((part) => (part ?? "").toLowerCase())
     .join("|");
 }
 
-function confirmation(type: LeadType): string {
+function confirmation(type: LeadType, profile: EnquiryProfile): string {
+  const custom = profile.confirmations?.[type];
+  if (custom) return custom;
   switch (type) {
     case "callback":
       return "Callback saved. Confirm to the visitor that a member of the team will call them. Do not invent a time they did not give.";

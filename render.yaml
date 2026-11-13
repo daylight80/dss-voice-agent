@@ -54,6 +54,14 @@ services:
         value: "true"
       - key: MIRRA_ALLOWED_ORIGINS
         sync: false
+      - key: ADI_NOTIFY_TO_EMAIL
+        value: info@formulajondrivingschool.co.uk
+      - key: ADI_NOTIFY_BCC_EMAIL
+        sync: false
+      - key: ADI_ALLOWED_ORIGINS
+        sync: false
+      - key: ADI_ALLOW_LOCALHOST
+        value: "true"
       - key: LEADS_READ_TOKEN
         sync: false
       - key: NODE_ENV

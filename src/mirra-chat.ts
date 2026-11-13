@@ -4,7 +4,7 @@
 
 import crypto from "node:crypto";
 import { mentionsUnknownPrice } from "./agency-facts.js";
-import { saveMirraEnquiry } from "./mirra-enquiry.js";
+import { saveMirraEnquiry, type EnquiryResult } from "./mirra-enquiry.js";
 import { cleanVisitorText, containsCardNumber, stripEmoji } from "./mirra-guard.js";
 import {
   cardRefusal,
@@ -96,12 +96,29 @@ export type ChatBody = {
 
 export type ChatResponse = { status: number; body: ChatBody };
 
+export type ChatPersona = {
+  instructions: (now: Date) => string;
+  saveEnquiry: (input: {
+    tool: string;
+    args: Record<string, unknown>;
+    conversationId: string;
+    now?: Date;
+    alreadySaved?: Set<string>;
+  }) => Promise<EnquiryResult>;
+  guardReply: (reply: string, saved: LeadType[]) => string;
+  cardRefusal: () => string;
+  lengthLimitMessage: () => string;
+};
+
 export type ChatDeps = {
   complete?: Completer;
   store?: ConversationStore;
   now?: () => Date;
   maxUserTurns?: number;
   maxMessageChars?: number;
+  /** Unset uses Mirra. ADI passes its own copy so Mirra's path stays the same. */
+  persona?: ChatPersona;
+  tools?: readonly unknown[];
 };
 
 export async function handleMirraMessage(
@@ -113,6 +130,11 @@ export async function handleMirraMessage(
   const now = deps.now ?? (() => new Date());
   const store = deps.store ?? defaultStore;
   const complete = deps.complete ?? completeWithXai;
+  const refuseCard = deps.persona?.cardRefusal ?? cardRefusal;
+  const limitMessage = deps.persona?.lengthLimitMessage ?? lengthLimitMessage;
+  const instructionsFor = deps.persona?.instructions ?? mirraInstructions;
+  const saveEnquiry = deps.persona?.saveEnquiry ?? saveMirraEnquiry;
+  const guardReply = deps.persona?.guardReply ?? finalReply;
 
   if (typeof input.message !== "string") {
     return { status: 400, body: { reply: "Please type a message.", error: "empty" } };
@@ -128,7 +150,7 @@ export async function handleMirraMessage(
     };
   }
   if (containsCardNumber(message)) {
-    return { status: 400, body: { reply: cardRefusal(), error: "card_details" } };
+    return { status: 400, body: { reply: refuseCard(), error: "card_details" } };
   }
 
   const requested =
@@ -143,13 +165,13 @@ export async function handleMirraMessage(
       status: 200,
       body: {
         conversationId: conversation.id,
-        reply: lengthLimitMessage(),
+        reply: limitMessage(),
         error: "length_limit",
       },
     };
   }
 
-  const instructions = mirraInstructions(now());
+  const instructions = instructionsFor(now());
   const modelInput: unknown[] = [
     ...conversation.turns.map((turn) => ({ role: turn.role, content: turn.content })),
     { role: "user", content: message },
@@ -162,6 +184,7 @@ export async function handleMirraMessage(
       instructions,
       input: modelInput,
       conversationId: conversation.id,
+      tools: deps.tools,
     };
     let turn;
     try {
@@ -182,7 +205,7 @@ export async function handleMirraMessage(
 
     modelInput.push(...turn.output);
     for (const call of parsed.calls) {
-      const result = await saveMirraEnquiry({
+      const result = await saveEnquiry({
         tool: call.name,
         args: call.arguments,
         conversationId: conversation.id,
@@ -200,7 +223,7 @@ export async function handleMirraMessage(
     reply = parsed.text;
   }
 
-  reply = finalReply(reply, saved);
+  reply = guardReply(reply, saved);
   conversation.turns.push({ role: "user", content: message });
   conversation.turns.push({ role: "assistant", content: reply });
   conversation.userTurns += 1;
