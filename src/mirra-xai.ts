@@ -10,6 +10,8 @@ export type ModelRequest = {
   instructions: string;
   input: unknown[];
   conversationId: string;
+  /** Unset keeps Mirra's tools. ADI passes its own list. */
+  tools?: readonly unknown[];
 };
 
 export type ModelTurn = {
@@ -49,12 +51,13 @@ export function buildXaiBody(input: {
   instructions: string;
   input: unknown[];
   conversationId: string;
+  tools?: readonly unknown[];
 }): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: input.model,
     instructions: input.instructions,
     input: input.input,
-    tools: MIRRA_TOOLS,
+    tools: input.tools ?? MIRRA_TOOLS,
     store: false,
     prompt_cache_key: input.conversationId,
   };
@@ -96,6 +99,7 @@ export async function completeWithXai(request: ModelRequest): Promise<ModelTurn>
     instructions: request.instructions,
     input: request.input,
     conversationId: request.conversationId,
+    tools: request.tools,
   });
 
   let response: Response;

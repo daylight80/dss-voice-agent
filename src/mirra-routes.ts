@@ -1,10 +1,11 @@
 /**
- * HTTP surface for Mirra. Mounted at /mirra so Amber's webhook stays untouched.
+ * HTTP surface for a website chat. Mirra is mounted at /mirra.
+ * ADI uses the same router with its own copy of the limits, origins and tools.
  */
 
 import express from "express";
 import { config } from "./config.js";
-import { handleMirraMessage, type ChatDeps } from "./mirra-chat.js";
+import { finalReply, handleMirraMessage, type ChatDeps, type ChatPersona } from "./mirra-chat.js";
 import {
   CHAT_RATE_RULES,
   LEADS_RATE_RULES,
@@ -14,7 +15,8 @@ import {
   originPolicyFrom,
   type RateRule,
 } from "./mirra-guard.js";
-import { contactFallback, rateLimitMessage } from "./mirra-prompt.js";
+import { cardRefusal, contactFallback, lengthLimitMessage, mirraInstructions, rateLimitMessage } from "./mirra-prompt.js";
+import { saveMirraEnquiry } from "./mirra-enquiry.js";
 import { mirraWidgetJs } from "./mirra-widget.js";
 import { MirraModelError } from "./mirra-xai.js";
 import { LEAD_SOURCES, LEAD_TYPES, listLeads, type LeadSource, type LeadType } from "./notify.js";
@@ -24,20 +26,70 @@ export type MirraRuntime = ChatDeps & {
   leadsRules?: RateRule[];
 };
 
+export type ChatMount = {
+  id: string;
+  logTag: string;
+  widgetJs: (options?: { maxMessageChars?: number }) => string;
+  allowedOrigins: () => string;
+  allowLocalhost: () => boolean;
+  defaultOrigins: readonly string[];
+  contactFallback: () => string;
+  rateLimitMessage: () => string;
+  persona: ChatPersona;
+  tools?: readonly unknown[];
+  /** "mirra" keeps phone and Mirra lines and skips other clients. */
+  leadsClient: string;
+  ratePrefix: string;
+  previewHtml?: () => string;
+};
+
+const MIRRA_MOUNT: ChatMount = {
+  id: "mirra",
+  logTag: "mirra",
+  widgetJs: mirraWidgetJs,
+  allowedOrigins: () => config.mirraAllowedOrigins,
+  allowLocalhost: () => config.mirraAllowLocalhost,
+  defaultOrigins: ["https://drivingschoolsolutions.co.uk", "https://www.drivingschoolsolutions.co.uk"],
+  contactFallback,
+  rateLimitMessage,
+  persona: {
+    instructions: mirraInstructions,
+    saveEnquiry: saveMirraEnquiry,
+    guardReply: finalReply,
+    cardRefusal,
+    lengthLimitMessage,
+  },
+  leadsClient: "mirra",
+  ratePrefix: "MIRRA",
+};
+
 export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
+  return createChatRouter(MIRRA_MOUNT, runtime);
+}
+
+export function createChatRouter(mount: ChatMount, runtime: MirraRuntime = {}): express.Router {
   const router = express.Router();
-  const chatLimit = createRateLimiter(runtime.chatRules ?? chatRulesFromEnv());
+  const chatLimit = createRateLimiter(runtime.chatRules ?? chatRulesFromEnv(mount.ratePrefix));
   const leadsLimit = createRateLimiter(runtime.leadsRules ?? LEADS_RATE_RULES);
+
+  if (mount.previewHtml) {
+    router.get("/preview", (_req, res) => {
+      res.set("Content-Type", "text/html; charset=utf-8");
+      res.set("Cache-Control", "no-store");
+      res.set("X-Robots-Tag", "noindex");
+      res.send(mount.previewHtml?.() ?? "");
+    });
+  }
 
   router.get("/widget.js", (_req, res) => {
     res.set("Content-Type", "application/javascript; charset=utf-8");
     res.set("Cache-Control", "public, max-age=300");
     res.set("X-Content-Type-Options", "nosniff");
-    res.send(mirraWidgetJs({ maxMessageChars: config.mirraMaxMessageChars }));
+    res.send(mount.widgetJs({ maxMessageChars: config.mirraMaxMessageChars }));
   });
 
   router.options("/chat", (req, res) => {
-    if (!applyChatCors(req, res)) {
+    if (!applyChatCors(req, res, mount)) {
       res.status(403).json({ error: "origin_not_allowed" });
       return;
     }
@@ -48,8 +100,8 @@ export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
   });
 
   router.post("/chat", async (req, res) => {
-    if (!applyChatCors(req, res)) {
-      res.status(403).json({ error: "origin_not_allowed", reply: contactFallback() });
+    if (!applyChatCors(req, res, mount)) {
+      res.status(403).json({ error: "origin_not_allowed", reply: mount.contactFallback() });
       return;
     }
     res.set("Cache-Control", "no-store");
@@ -57,7 +109,7 @@ export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
     const decision = chatLimit.allow(clientIp(req));
     if (!decision.ok) {
       res.set("Retry-After", String(decision.retryAfterSeconds));
-      res.status(429).json({ error: "rate_limited", reply: rateLimitMessage() });
+      res.status(429).json({ error: "rate_limited", reply: mount.rateLimitMessage() });
       return;
     }
 
@@ -75,15 +127,17 @@ export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
           now: runtime.now,
           maxUserTurns: runtime.maxUserTurns ?? config.mirraMaxUserTurns,
           maxMessageChars: runtime.maxMessageChars ?? config.mirraMaxMessageChars,
+          persona: mount.persona,
+          tools: runtime.tools ?? mount.tools,
         },
       );
       res.status(result.status).json(result.body);
     } catch (err) {
       const missing = err instanceof MirraModelError && err.code === "missing_key";
-      console.error("[mirra] chat failed", missing ? "missing_key" : "upstream");
+      console.error(`[${mount.logTag}] chat failed`, missing ? "missing_key" : "upstream");
       res.status(missing ? 503 : 502).json({
         error: missing ? "not_configured" : "unavailable",
-        reply: contactFallback(),
+        reply: mount.contactFallback(),
       });
     }
   });
@@ -138,6 +192,7 @@ export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
       type: type as LeadType | undefined,
       since,
       limit,
+      client: mount.leadsClient,
     });
     res.json({ ok: true, count: leads.length, leads });
   });
@@ -145,18 +200,18 @@ export function createMirraRouter(runtime: MirraRuntime = {}): express.Router {
   return router;
 }
 
-function applyChatCors(req: express.Request, res: express.Response): boolean {
+function applyChatCors(req: express.Request, res: express.Response, mount: ChatMount): boolean {
   const origin = req.header("origin");
-  const policy = originPolicyFrom(config.mirraAllowedOrigins, config.mirraAllowLocalhost);
+  const policy = originPolicyFrom(mount.allowedOrigins(), mount.allowLocalhost(), mount.defaultOrigins);
   res.set("Vary", "Origin");
   if (!isAllowedOrigin(origin, policy)) return false;
   res.set("Access-Control-Allow-Origin", origin as string);
   return true;
 }
 
-function chatRulesFromEnv(): RateRule[] {
-  const perMinute = numberEnv("MIRRA_RATE_PER_MINUTE", CHAT_RATE_RULES[0].max);
-  const perTen = numberEnv("MIRRA_RATE_PER_10_MIN", CHAT_RATE_RULES[1].max);
+function chatRulesFromEnv(prefix: string): RateRule[] {
+  const perMinute = numberEnv(`${prefix}_RATE_PER_MINUTE`, CHAT_RATE_RULES[0].max);
+  const perTen = numberEnv(`${prefix}_RATE_PER_10_MIN`, CHAT_RATE_RULES[1].max);
   return [
     { windowMs: 60_000, max: perMinute },
     { windowMs: 600_000, max: perTen },

@@ -25,6 +25,10 @@ This is also the foundation for the **AI Voice Receptionist** product sold to AD
 | `GET` | `/mirra/widget.js` | Chat bubble script for the WordPress site |
 | `POST` | `/mirra/chat` | One Mirra turn. Requires an allowed `Origin` |
 | `GET` | `/mirra/leads` | Lead read for a follow-up assistant. Requires `LEADS_READ_TOKEN` |
+| `GET` | `/adi/widget.js` | ADI chat bubble for Formula Jon Driving School |
+| `POST` | `/adi/chat` | One ADI turn. Requires an allowed Formula Jon `Origin` |
+| `GET` | `/adi/leads` | ADI enquiries only. Same `LEADS_READ_TOKEN` |
+| `GET` | `/adi/preview` | Local-style preview page. Not part of Jon's site |
 
 ## Mirra — website chat
 
@@ -93,6 +97,47 @@ curl -s \
 
 Locally, the same calls work against `http://127.0.0.1:10000` with `Origin: http://localhost:10000`.
 
+## ADI — Formula Jon Driving School
+
+ADI is the same chat as Mirra, with his own persona, facts, colours and embed. Mirra on drivingschoolsolutions.co.uk is unchanged: same opening line, same colours, same `/mirra/widget.js`.
+
+He answers only from formulajondrivingschool.co.uk (lessons, manual or automatic, areas, prices by postcode, the free controls lesson, Theory Test Pro, booking, test centres). He does not invent a price, a pass rate or a policy. If two pages disagree, he says so and offers a callback. British English. He says "pupils".
+
+An enquiry is still one line in `$DATA_DIR/leads.jsonl`, with `source` `website_chat` and `client` `adi`. `/mirra/leads` skips those lines. `/adi/leads` returns only them.
+
+When someone shows interest in lessons, ADI asks if they are ready to check lesson availability. If they are, he collects the client's field list, one or two questions at a time: name, phone number, pickup postcode, lesson availability, and whether they have passed the theory test. Each answer is stored and labelled in the email. If they skip one, he saves what they gave. Mirra has no availability field list, so her enquiry is unchanged. He can still book a callback or take a message.
+
+Email uses the same webhook or SMTP as Amber and Mirra. The subject starts with `ADI (Formula Jon):`. By default the message is **To** `info@formulajondrivingschool.co.uk` and **BCC** `NOTIFY_TO_EMAIL` (the address Mirra uses, Grant). Each chat client has its own pair:
+
+| Client | To | BCC |
+|--------|----|-----|
+| Amber | `NOTIFY_TO_EMAIL` | none |
+| Mirra | `MIRRA_NOTIFY_TO_EMAIL`, or `NOTIFY_TO_EMAIL` if that is unset | `MIRRA_NOTIFY_BCC_EMAIL`, or none |
+| ADI | `ADI_NOTIFY_TO_EMAIL`, or `info@formulajondrivingschool.co.uk` | `ADI_NOTIFY_BCC_EMAIL` if that variable is set (including empty, which sends no copy). If the variable is unset, BCC is `NOTIFY_TO_EMAIL` |
+
+A BCC that is the same address as To is left off. Webhook deliveries include `bcc` in the JSON only when there is a copy. SMTP uses the `bcc` field.
+
+The chat API accepts `https://formulajondrivingschool.co.uk` and `https://www.formulajondrivingschool.co.uk`, plus localhost unless `ADI_ALLOW_LOCALHOST=false`. Set `ADI_ALLOWED_ORIGINS` to replace that site list. A request from the Driving School Solutions site is rejected.
+
+### WordPress (not installed yet)
+
+Do not add this to the live Formula Jon site until Grant asks. When that happens, the bubble is one script tag:
+
+```html
+<script src="https://dss-voice-agent.onrender.com/adi/widget.js" defer></script>
+```
+
+Paste it in the site-wide footer (WPCode, or Elementor custom code at `</body>`), then clear the page cache. The opening line is: "Hi, I'm ADI from Formula Jon Driving School. How can I help?"
+
+### Preview
+
+`GET /adi/preview` is a stand-in page in Formula Jon's colours, with the real widget. It is not on Jon's domain.
+
+```bash
+npm start
+# open http://127.0.0.1:10000/adi/preview
+```
+
 ## Local development
 
 ```bash
@@ -124,6 +169,8 @@ Do **not** point a live Twilio trunk at localhost. Deploy to Render (or use a tu
    - `PUBLIC_BASE_URL` = `https://<service>.onrender.com`
    - `LEADS_READ_TOKEN` if a follow-up assistant should call `GET /mirra/leads`
    - Optional: `XAI_CHAT_MODEL`, `MIRRA_REASONING_EFFORT`, `MIRRA_ALLOWED_ORIGINS`
+   - Optional, for ADI: `ADI_NOTIFY_TO_EMAIL` (default `info@formulajondrivingschool.co.uk`), `ADI_NOTIFY_BCC_EMAIL` (default `NOTIFY_TO_EMAIL`), `ADI_ALLOWED_ORIGINS`, `ADI_ALLOW_LOCALHOST`
+   - Optional, for Mirra only: `MIRRA_NOTIFY_TO_EMAIL`, `MIRRA_NOTIFY_BCC_EMAIL`
 4. Confirm `GET https://<service>.onrender.com/health` returns `ok: true`.
 
 ## Twilio Elastic SIP Trunk
@@ -236,7 +283,15 @@ voice-agent/
     ├── mirra-enquiry.ts  # Tool calls into the shared lead record
     ├── mirra-guard.ts    # Origin lock, rate limit, card refusal
     ├── mirra-tools.ts    # Chat tool schemas
-    ├── mirra-widget.ts   # Shadow-DOM chat bubble
+    ├── mirra-widget.ts   # Mirra's colours and face on the shared bubble
+    ├── chat-widget.ts    # Shared shadow-DOM bubble
+    ├── adi-routes.ts     # /adi/widget.js, /adi/chat, /adi/leads, /adi/preview
+    ├── adi-facts.ts      # Formula Jon facts and the price check
+    ├── adi-prompt.ts     # ADI's instructions
+    ├── adi-tools.ts      # Pupil enquiry tools
+    ├── adi-enquiry.ts    # ADI lines in the shared lead file
+    ├── adi-widget.ts     # ADI's colours, type and cap
+    ├── adi-preview.ts    # Local preview page
     ├── mirra-xai.ts      # xAI Responses API client
     ├── call-session.ts   # Realtime WebSocket + tool handlers + end-of-call summary
     ├── call-context.ts   # Per-call caller-ID and returning-caller lines

@@ -15,17 +15,21 @@ export type OriginPolicy = {
   allowLocalhost: boolean;
 };
 
-export function originPolicyFrom(configured: string, allowLocalhost: boolean): OriginPolicy {
+export function originPolicyFrom(
+  configured: string,
+  allowLocalhost: boolean,
+  defaults: readonly string[] = DEFAULT_SITE_ORIGINS,
+): OriginPolicy {
   const entries = configured
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
-  const source = entries.length ? entries : DEFAULT_SITE_ORIGINS;
+  const source = entries.length ? entries : defaults;
   const siteOrigins: string[] = [];
   for (const entry of source) {
     const origin = strictOrigin(entry);
     if (origin) siteOrigins.push(origin);
-    else console.warn("[mirra] ignoring invalid MIRRA_ALLOWED_ORIGINS entry");
+    else console.warn("[chat] ignoring invalid allowed-origin entry");
   }
   return { siteOrigins, allowLocalhost };
 }

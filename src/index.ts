@@ -7,11 +7,14 @@ import { joinCall } from "./call-session.js";
 import { callerNumberFrom } from "./caller-number.js";
 import { hasEmailConfigured } from "./notify.js";
 import { startPersonalDataRetention } from "./retention.js";
+import { createAdiRouter } from "./adi-routes.js";
 import { createMirraRouter, type MirraRuntime } from "./mirra-routes.js";
 
 export type AppOptions = {
   /** Test hook. Production uses the xAI client and the process-wide limits. */
   mirra?: MirraRuntime;
+  /** Test hook for ADI. Production uses the xAI client and ADI's own store. */
+  adi?: MirraRuntime;
 };
 
 export function createApp(options?: AppOptions): express.Express {
@@ -35,6 +38,7 @@ export function createApp(options?: AppOptions): express.Express {
       service: "dss-voice-agent",
       receptionist: "Amber",
       chat: "Mirra",
+      chats: ["Mirra", "ADI"],
       phone: config.dssPhoneNumber,
       voice: config.voice,
       emailConfigured: hasEmailConfigured(),
@@ -98,6 +102,7 @@ export function createApp(options?: AppOptions): express.Express {
   });
 
   app.use("/mirra", createMirraRouter(options?.mirra));
+  app.use("/adi", createAdiRouter(options?.adi));
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error("[http] unhandled error", err);
@@ -124,6 +129,7 @@ if (isDirectRun()) {
       `Amber voice agent listening on 0.0.0.0:${config.port} (DSS ${config.dssPhoneNumber}, voice=${config.voice})`,
     );
     console.log("Mirra website chat is available at /mirra/widget.js and POST /mirra/chat");
+    console.log("ADI website chat is available at /adi/widget.js, POST /adi/chat, and GET /adi/preview");
     if (!hasEmailConfigured()) {
       console.warn(
         "Email not configured — leads will be written to DATA_DIR only. Set EMAIL_WEBHOOK_URL or SMTP_* + NOTIFY_TO_EMAIL.",
