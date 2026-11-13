@@ -42,6 +42,11 @@ export type ChatWidgetSpec = {
    * when he replies, and while the launcher is hovered. Mirra leaves this unset.
    */
   expression?: "adi";
+  /**
+   * How far the launcher sits above the bottom of the page. The open panel
+   * moves with it. Mirra leaves this unset and stays at 16.
+   */
+  bottomOffsetPx?: number;
 };
 
 export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageChars?: number }): string {
@@ -312,6 +317,7 @@ export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageCha
 
 function widgetMarkup(spec: ChatWidgetSpec, maxChars: number): string {
   const prefix = spec.id;
+  const bottomOffset = spec.bottomOffsetPx ?? 16;
   return `<style>
 @import url("${spec.fontStylesheet}");
 :host {
@@ -319,7 +325,7 @@ function widgetMarkup(spec: ChatWidgetSpec, maxChars: number): string {
   position: fixed;
   z-index: 2147483000;
   left: max(16px, env(safe-area-inset-left));
-  bottom: max(16px, env(safe-area-inset-bottom));
+  bottom: max(${bottomOffset}px, env(safe-area-inset-bottom));
   font-family: ${spec.fontFamily};
   font-size: 16px;
   line-height: 1.45;
@@ -402,7 +408,7 @@ button { cursor: pointer; }
   left: 0;
   bottom: 72px;
   width: min(380px, calc(100vw - 32px));
-  height: min(560px, calc(100dvh - 96px));
+  height: min(560px, calc(100dvh - ${bottomOffset + 80}px));
   display: flex;
   flex-direction: column;
   background: ${spec.panelBg};

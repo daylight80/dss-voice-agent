@@ -71,6 +71,8 @@ const ADI_WIDGET: ChatWidgetSpec = {
   scriptPath: "/adi/widget.js",
   bannerComment: "ADI — Formula Jon Driving School website chat.",
   expression: "adi",
+  /** Clears a typical bottom cookie banner. The open panel rises with the launcher. */
+  bottomOffsetPx: 90,
 };
 
 export function adiWidgetJs(options?: { maxMessageChars?: number }): string {
