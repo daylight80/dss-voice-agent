@@ -4,12 +4,31 @@
  */
 
 import { config } from "./config.js";
-import { saveMirraEnquiry, type EnquiryProfile, type EnquiryResult } from "./mirra-enquiry.js";
+import { saveMirraEnquiry, type EnquiryField, type EnquiryProfile, type EnquiryResult } from "./mirra-enquiry.js";
 import type { LeadType } from "./notify.js";
+
+/** Asked, in order, when someone wants to check lesson availability. */
+export const ADI_AVAILABILITY_FIELDS: EnquiryField[] = [
+  { key: "name", label: "Name", ask: "What's your name?" },
+  { key: "phone", label: "Phone number", ask: "What's the best phone number?" },
+  { key: "pickup_postcode", label: "Pickup postcode", ask: "What's the postcode you'd like to be picked up from?" },
+  {
+    key: "lesson_availability",
+    label: "Lesson availability",
+    ask: "Which days and times could you do lessons?",
+    max: 300,
+  },
+  {
+    key: "theory_passed",
+    label: "Theory test passed",
+    ask: "Have you passed your theory test? Yes or no is fine.",
+    kind: "yes_no",
+  },
+];
 
 const ADI_PROFILE: EnquiryProfile = {
   clientId: "adi",
-  requireLessonDetails: true,
+  availabilityFields: ADI_AVAILABILITY_FIELDS,
   tools: {
     save_lead: "lead",
     book_callback: "callback",

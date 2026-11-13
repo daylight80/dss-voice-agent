@@ -1,49 +1,34 @@
-/** Tools ADI may call. Same jobs as Mirra's enquiry tools, in a pupil's words. */
+/** Tools ADI may call. The availability questions come from the client field list. */
+
+import { ADI_AVAILABILITY_FIELDS } from "./adi-enquiry.js";
+import type { EnquiryField } from "./mirra-enquiry.js";
 
 export const ADI_TOOLS = [
   {
     type: "function" as const,
     name: "save_lead",
     description:
-      "Save a pupil or parent enquiry after they have agreed the summary. Need a name, a phone number or email, the area or postcode, whether they want manual or automatic, and what they need.",
-    parameters: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "Their name" },
-        phone: { type: "string", description: "Best phone number" },
-        email: { type: "string", description: "Email address, if given" },
-        area: { type: "string", description: "Town, area, or postcode where they want lessons" },
-        transmission: {
-          type: "string",
-          enum: ["manual", "automatic", "not sure"],
-          description: "Manual, automatic, or not sure",
-        },
-        interest: { type: "string", description: "What they need, such as lessons for a beginner, a refresher, or a test day" },
-        notes: { type: "string", description: "Any extra context they agreed you should pass on" },
-      },
-      required: ["name", "area", "transmission"],
-    },
+      "Save a lesson-availability enquiry after they have agreed the summary. Pass whichever of the availability details they gave. Omit any they would rather not share. Still call this when the list is incomplete.",
+    parameters: availabilityParameters(),
   },
   {
     type: "function" as const,
     name: "book_callback",
     description:
-      "Book a callback from Formula Jon Driving School after they have agreed. Need their name, phone number, when they would like the call, their area, and manual or automatic.",
+      "Book a callback from Formula Jon Driving School after they have agreed. Need their name, phone number, and when they would like the call.",
     parameters: {
       type: "object",
       properties: {
-        name: { type: "string" },
-        phone: { type: "string" },
+        ...availabilityProperties(ADI_AVAILABILITY_FIELDS),
         email: { type: "string" },
         preferred_time: { type: "string", description: "When they would like the school to call" },
-        area: { type: "string", description: "Town, area, or postcode" },
         transmission: {
           type: "string",
           enum: ["manual", "automatic", "not sure"],
         },
         notes: { type: "string" },
       },
-      required: ["name", "phone", "preferred_time", "area", "transmission"],
+      required: ["name", "phone", "preferred_time"],
     },
   },
   {
@@ -58,13 +43,41 @@ export const ADI_TOOLS = [
         phone: { type: "string" },
         email: { type: "string" },
         message: { type: "string", description: "The message to pass on" },
-        area: { type: "string" },
-        transmission: {
-          type: "string",
-          enum: ["manual", "automatic", "not sure"],
-        },
       },
       required: ["name", "message"],
     },
   },
 ];
+
+function availabilityParameters(): {
+  type: "object";
+  properties: Record<string, unknown>;
+  required: string[];
+} {
+  return {
+    type: "object",
+    properties: {
+      ...availabilityProperties(ADI_AVAILABILITY_FIELDS),
+      email: { type: "string", description: "Email address, if they gave one" },
+      transmission: {
+        type: "string",
+        enum: ["manual", "automatic", "not sure"],
+        description: "Manual, automatic, or not sure, only if they said",
+      },
+      interest: { type: "string", description: "What they need, if they said more than a general lesson enquiry" },
+      notes: { type: "string" },
+    },
+    required: [],
+  };
+}
+
+function availabilityProperties(fields: EnquiryField[]): Record<string, unknown> {
+  const properties: Record<string, unknown> = {};
+  for (const field of fields) {
+    properties[field.key] = {
+      type: "string",
+      description: field.kind === "yes_no" ? `${field.label}. Yes or no.` : field.ask,
+    };
+  }
+  return properties;
+}

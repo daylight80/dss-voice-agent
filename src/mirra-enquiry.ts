@@ -16,6 +16,19 @@ export type EnquiryResult = {
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
+/** One question in a client's lesson-availability enquiry, in the order to ask it. */
+export type EnquiryField = {
+  /** Tool argument and storage key. */
+  key: string;
+  /** Label in the notification email. */
+  label: string;
+  /** How the assistant should ask. */
+  ask: string;
+  /** yes_no is stored as Yes or No when the answer is clear. */
+  kind?: "text" | "yes_no";
+  max?: number;
+};
+
 export type EnquiryProfile = {
   /** Stored on the lead. Leave unset for Mirra so the JSON line stays unchanged. */
   clientId?: string;
@@ -23,6 +36,11 @@ export type EnquiryProfile = {
   tools?: Record<string, LeadType>;
   /** Pupil enquiries must name an area and manual or automatic. */
   requireLessonDetails?: boolean;
+  /**
+   * Ordered availability questions. When set, a lesson enquiry saves whatever
+   * subset the visitor agreed to give. Mirra leaves this unset.
+   */
+  availabilityFields?: EnquiryField[];
   /** To address. Unset uses NOTIFY_TO_EMAIL. */
   notifyTo?: () => string | undefined;
   /** BCC address. Unset sends no copy. */
@@ -51,7 +69,7 @@ export async function saveMirraEnquiry(
     return { saved: false, duplicate: false, body: { ok: false, error: `Unknown tool: ${input.tool}` } };
   }
 
-  const fields = readFields(input.args);
+  const fields = readFields(input.args, profile);
   const problem = validate(type, fields, profile);
   if (problem) {
     return { saved: false, duplicate: false, type, body: { ok: false, error: problem } };
@@ -124,9 +142,10 @@ type Fields = {
   message?: string;
   notes?: string;
   transmission?: string;
+  details?: Array<{ key: string; label: string; value: string }>;
 };
 
-function readFields(args: Record<string, unknown>): Fields {
+function readFields(args: Record<string, unknown>, profile: EnquiryProfile): Fields {
   return {
     name: text(args.name, 120),
     phone: text(args.phone, 40),
@@ -141,7 +160,30 @@ function readFields(args: Record<string, unknown>): Fields {
     preferred_time: text(args.preferred_time, 200),
     message: text(args.message, 2000),
     notes: text(args.notes, 1000),
+    details: readAvailability(args, profile),
   };
+}
+
+function readAvailability(
+  args: Record<string, unknown>,
+  profile: EnquiryProfile,
+): Array<{ key: string; label: string; value: string }> | undefined {
+  if (!profile.availabilityFields?.length) return undefined;
+  const details = [];
+  for (const field of profile.availabilityFields) {
+    const raw = text(args[field.key], field.max ?? 300);
+    const value = field.kind === "yes_no" ? yesNo(raw) : raw;
+    if (value) details.push({ key: field.key, label: field.label, value });
+  }
+  return details.length ? details : undefined;
+}
+
+function yesNo(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const lower = value.toLowerCase();
+  if (/\b(not yet|haven't|haven’t|have not|not passed|no|nope)\b/.test(lower)) return "No";
+  if (/^(y|yes|yeah|yep)\b/.test(lower) || /\bpassed\b/.test(lower)) return "Yes";
+  return value;
 }
 
 function text(value: unknown, max: number): string | undefined {
@@ -192,6 +234,10 @@ function validate(type: LeadType, fields: Fields, profile: EnquiryProfile): stri
     return needContact(fields);
   }
 
+  if (profile.availabilityFields?.length && type === "lead") {
+    return availabilityReady(fields);
+  }
+
   if (!fields.name || fields.name.length < 2) return "Ask for their name before saving.";
 
   if (type === "callback") {
@@ -208,6 +254,14 @@ function validate(type: LeadType, fields: Fields, profile: EnquiryProfile): stri
   const contact = needContact(fields);
   if (contact) return contact;
   return lessonDetails(fields, profile);
+}
+
+function availabilityReady(fields: Fields): string | undefined {
+  if (fields.name && fields.name.length < 2) {
+    return "That name is too short. Ask once more, and a first name is enough. If they would rather not say, save the other details.";
+  }
+  if (fields.details?.length || fields.email) return undefined;
+  return "Ask whether they are ready to check lesson availability. Save whatever they are happy to give, but at least one detail is needed.";
 }
 
 function lessonDetails(fields: Fields, profile: EnquiryProfile): string | undefined {
@@ -270,6 +324,15 @@ function toRecord(
     record.client = profile.clientId;
     if (fields.transmission) record.transmission = fields.transmission;
   }
+  if (fields.details?.length) {
+    record.details = fields.details;
+    const pickup = fields.details.find((detail) => detail.key === "pickup_postcode")?.value;
+    if (pickup && !record.school_or_area) record.school_or_area = pickup;
+    const named = fields.details.find((detail) => detail.key === "name")?.value;
+    const phone = fields.details.find((detail) => detail.key === "phone")?.value;
+    if (named && !record.name) record.name = named;
+    if (phone && !record.phone) record.phone = phone;
+  }
   return record;
 }
 
@@ -287,6 +350,7 @@ function enquiryKey(record: LeadRecord): string {
     record.gbp_url,
     record.transmission,
     record.client,
+    ...(record.details ?? []).map((detail) => detail.value),
   ]
     .map((part) => (part ?? "").toLowerCase())
     .join("|");

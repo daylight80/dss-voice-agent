@@ -40,6 +40,11 @@ export type LeadRecord = {
   client?: string;
   /** "manual", "automatic", or "not sure" when a pupil said which they want. */
   transmission?: string;
+  /**
+   * Client-configured enquiry answers, in the order that client asks them.
+   * Absent on Amber and Mirra records.
+   */
+  details?: Array<{ key: string; label: string; value: string }>;
 };
 
 export function leadTypeLabel(type: string | undefined): string {
@@ -251,6 +256,17 @@ function clientMatches(record: Record<string, unknown>, client: string): boolean
   return value === client;
 }
 
+function detailHas(record: LeadRecord, key: string): boolean {
+  return record.details?.some((detail) => detail.key === key) ?? false;
+}
+
+function areaLine(record: LeadRecord): string | null {
+  if (!record.school_or_area) return null;
+  const pickup = record.details?.find((detail) => detail.key === "pickup_postcode");
+  if (pickup && pickup.value === record.school_or_area) return null;
+  return `${record.client === "adi" ? "Area" : "School / area"}: ${record.school_or_area}`;
+}
+
 function oneLine(value: string | undefined): string {
   if (!value) return "";
   return value.replace(/\s+/g, " ").trim().slice(0, 80);
@@ -264,16 +280,15 @@ function bodyFor(record: LeadRecord): string {
     `Received (UTC): ${record.receivedAt}`,
     website ? `Conversation: ${record.conversationId ?? record.callId}` : `Call ID: ${record.callId}`,
     record.from ? `Caller From: ${record.from}` : null,
-    record.name ? `Name: ${record.name}` : null,
-    record.phone ? `Phone: ${record.phone}` : null,
+    ...(record.details ?? []).map((detail) => `${detail.label}: ${detail.value}`),
+    record.name && !detailHas(record, "name") ? `Name: ${record.name}` : null,
+    record.phone && !detailHas(record, "phone") ? `Phone: ${record.phone}` : null,
     record.email ? `Email: ${record.email}` : null,
     record.business_type ? `Business: ${record.business_type}` : null,
     record.business_name ? `Business name: ${record.business_name}` : null,
     record.town ? `Town: ${record.town}` : null,
     record.gbp_url ? `Google Business Profile: ${record.gbp_url}` : null,
-    record.school_or_area
-      ? `${record.client === "adi" ? "Area" : "School / area"}: ${record.school_or_area}`
-      : null,
+    areaLine(record),
     record.transmission ? `Manual or automatic: ${record.transmission}` : null,
     record.interest ? `Interest: ${record.interest}` : null,
     record.preferred_time ? `Preferred callback: ${record.preferred_time}` : null,

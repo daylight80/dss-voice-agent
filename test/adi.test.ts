@@ -38,6 +38,10 @@ test("ADI quotes Formula Jon only, and refuses a price that is not on the site",
   assert.match(instructions, /07790 779 687/);
   assert.match(instructions, /0330 043 6002/);
   assert.match(instructions, /https:\/\/www\.formulajondrivingschool\.co\.uk\/book/);
+  assert.match(instructions, /ready to check lesson availability/);
+  assert.match(instructions, /one or two at a time/);
+  const availability = instructions.slice(instructions.indexOf("1) Name"), instructions.indexOf("If they would rather not"));
+  assert.match(availability, /1\) Name[\s\S]*2\) Phone number[\s\S]*3\) Pickup postcode[\s\S]*4\) Lesson availability[\s\S]*5\) Theory test passed/);
   assert.doesNotMatch(instructions, /£299\.99/);
   assert.doesNotMatch(instructions, /Driving School Solutions/);
   assert.doesNotMatch(instructions, /Grant/);
@@ -152,13 +156,61 @@ test("ADI enquiries are stored apart from Mirra and emailed with the ADI subject
     assert.equal(posted[0]?.bcc, "office@example.com");
     assert.equal(posted[0]?.subject, "ADI (Formula Jon): message from Sam Taylor");
 
-    const missing = await saveAdiEnquiry({
+    posted.length = 0;
+    const partial = await saveAdiEnquiry({
       tool: "save_lead",
       conversationId: "22222222-2222-4222-8222-222222222222",
+      now: new Date("2026-11-13T10:25:00.000Z"),
       args: { name: "Sam Taylor", phone: "07790 111222" },
     });
-    assert.equal(missing.saved, false);
-    assert.match(String(missing.body.error), /area or postcode/);
+    assert.equal(partial.saved, true);
+    assert.match(posted[0]?.text ?? "", /Name: Sam Taylor/);
+    assert.match(posted[0]?.text ?? "", /Phone number: 07790 111222/);
+    assert.doesNotMatch(posted[0]?.text ?? "", /Pickup postcode/);
+
+    posted.length = 0;
+    const full = await saveAdiEnquiry({
+      tool: "save_lead",
+      conversationId: "33333333-3333-4333-8333-333333333333",
+      now: new Date("2026-11-13T10:30:00.000Z"),
+      args: {
+        name: "Alex Patel",
+        phone: "07790 333444",
+        pickup_postcode: "SM5 4NQ",
+        lesson_availability: "Weekday evenings after 6",
+        theory_passed: "not yet",
+      },
+    });
+    assert.equal(full.saved, true);
+    const line = (await fs.readFile(path.join(dir, "leads.jsonl"), "utf8")).trim().split("\n").at(-1);
+    const storedFull = JSON.parse(line ?? "{}") as LeadRecord;
+    assert.deepEqual(
+      storedFull.details?.map((detail) => detail.label),
+      ["Name", "Phone number", "Pickup postcode", "Lesson availability", "Theory test passed"],
+    );
+    assert.equal(storedFull.details?.find((detail) => detail.key === "theory_passed")?.value, "No");
+    assert.equal(storedFull.school_or_area, "SM5 4NQ");
+    const email = posted[0]?.text ?? "";
+    assert.match(email, /Name: Alex Patel/);
+    assert.match(email, /Phone number: 07790 333444/);
+    assert.match(email, /Pickup postcode: SM5 4NQ/);
+    assert.match(email, /Lesson availability: Weekday evenings after 6/);
+    assert.match(email, /Theory test passed: No/);
+    assert.equal(posted[0]?.to, "jon@example.com");
+    assert.equal(posted[0]?.bcc, "office@example.com");
+    const nameAt = email.indexOf("Name:");
+    const phoneAt = email.indexOf("Phone number:");
+    const postcodeAt = email.indexOf("Pickup postcode:");
+    const whenAt = email.indexOf("Lesson availability:");
+    const theoryAt = email.indexOf("Theory test passed:");
+    assert.ok(nameAt < phoneAt && phoneAt < postcodeAt && postcodeAt < whenAt && whenAt < theoryAt);
+
+    const empty = await saveAdiEnquiry({
+      tool: "save_lead",
+      conversationId: "33333333-3333-4333-8333-333333333333",
+      args: {},
+    });
+    assert.equal(empty.saved, false);
   } finally {
     globalThis.fetch = originalFetch;
     restoreEnv(previous);

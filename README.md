@@ -103,7 +103,9 @@ ADI is the same chat as Mirra, with his own persona, facts, colours and embed. M
 
 He answers only from formulajondrivingschool.co.uk (lessons, manual or automatic, areas, prices by postcode, the free controls lesson, Theory Test Pro, booking, test centres). He does not invent a price, a pass rate or a policy. If two pages disagree, he says so and offers a callback. British English. He says "pupils".
 
-An enquiry is still one line in `$DATA_DIR/leads.jsonl`, with `source` `website_chat` and `client` `adi`. `/mirra/leads` skips those lines. `/adi/leads` returns only them. The fields are name, phone, email, area, manual or automatic, and what they need, plus a callback or a message.
+An enquiry is still one line in `$DATA_DIR/leads.jsonl`, with `source` `website_chat` and `client` `adi`. `/mirra/leads` skips those lines. `/adi/leads` returns only them.
+
+When someone shows interest in lessons, ADI asks if they are ready to check lesson availability. If they are, he collects the client's field list, one or two questions at a time: name, phone number, pickup postcode, lesson availability, and whether they have passed the theory test. Each answer is stored and labelled in the email. If they skip one, he saves what they gave. Mirra has no availability field list, so her enquiry is unchanged. He can still book a callback or take a message.
 
 Email uses the same webhook or SMTP as Amber and Mirra. The subject starts with `ADI (Formula Jon):`. By default the message is **To** `info@formulajondrivingschool.co.uk` and **BCC** `NOTIFY_TO_EMAIL` (the address Mirra uses, Grant). Each chat client has its own pair:
 
