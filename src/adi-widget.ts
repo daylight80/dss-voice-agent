@@ -2,42 +2,39 @@
  * ADI's embed for Formula Jon Driving School. Same bubble behaviour as Mirra.
  * Colours and type come from the live site's CSS (13 November 2026):
  * --theme-color rgb(224, 22, 9), --title-color #191825, --smoke-color #F7F7F7,
- * Raleway for headings and Roboto for text. The cap panel uses the logo cream
- * #ECEBD7 so the cap stays readable at launcher size.
+ * Raleway for headings and Roboto for text. The beanie is Formula Jon red
+ * with a cream band and bobble so it still reads at launcher size.
  */
 
 import { renderChatWidget, type ChatWidgetSpec } from "./chat-widget.js";
 import { ADI_OPENING } from "./adi-prompt.js";
 
 /**
- * A friendly face in a baseball cap, turned a little so the peak reads at
- * 56px. The peak sticks out over the forehead only. There is no brim around
- * the sides or the back.
+ * An original flat paper-cut face. Chunky and a little wide, with dot eyes
+ * in white ovals. The red bobble beanie covers the top and sides; the cream
+ * ribbed band and bobble stay visible at 56px. Not based on any existing character.
  */
 const AVATAR_SVG = `<svg class="avatar" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
   <g class="avatar-bob">
-    <path d="M15 40c0 8 4 15 10 16" fill="none" stroke="#191825" stroke-width="2.2" stroke-linecap="round"></path>
-    <circle class="avatar-face-shape" cx="30" cy="42" r="17.2" fill="#F6D3B0" stroke="#E01609" stroke-width="2.2"></circle>
-    <path d="M16 33.5C16 19 22 13 31.5 13c9.2 0 15.2 6 15.2 16.2 0 2.2-.4 3.6-1.2 4.6-8.2-2.4-20.6-2.2-29.5-.3z" fill="#E01609"></path>
-    <path d="M31.5 15.2c-2.2 6.2-5 11.6-8.4 16.6" fill="none" stroke="#7A0C08" stroke-width="1.15" stroke-linecap="round"></path>
-    <path d="M31.5 15.2c2.4 6.4 5.6 11.4 9.6 16" fill="none" stroke="#7A0C08" stroke-width="1.15" stroke-linecap="round"></path>
-    <path d="M31.5 15.2c-.4 6.6-.8 12-1.2 16.8" fill="none" stroke="#7A0C08" stroke-width="1.15" stroke-linecap="round"></path>
-    <circle cx="31.5" cy="14.4" r="1.7" fill="#ECEBD7" stroke="#E01609" stroke-width="0.6"></circle>
-    <ellipse cx="33.5" cy="24.2" rx="4.2" ry="3.1" fill="#ECEBD7"></ellipse>
-    <path class="peak" d="M22 32.5c6.5-1.2 14-.4 20.5 2.2 8 3.2 14.5 7.5 12.2 12.2-7.2-2.2-16.8-5.6-26.4-7.2-4.6-.8-7.8-3.6-6.3-7.2z" fill="#ECEBD7"></path>
-    <path class="peak" d="M23.5 32.2c6.2-1 13-.2 18.8 1.8 6.2 2.2 10.2 4.6 8.6 7.6-6-1.6-14.2-4-22.4-5.4-3.6-.6-6.2-2.4-5-4z" fill="#E01609"></path>
+    <ellipse class="avatar-face-shape" cx="32" cy="38" rx="28" ry="24" fill="#F3C29A"></ellipse>
+    <path d="M5 30c0-16 11-26 27-26s27 10 27 26v6H5z" fill="#E01609"></path>
+    <circle class="bobble" cx="32" cy="8" r="6.2" fill="#ECEBD7"></circle>
+    <rect class="beanie-band" x="5" y="28" width="54" height="11" fill="#ECEBD7"></rect>
+    <path d="M10 28v11M16 28v11M22 28v11M28 28v11M34 28v11M40 28v11M46 28v11M52 28v11" fill="none" stroke="#C4B48A" stroke-width="1.6"></path>
+    <ellipse cx="16" cy="48" rx="4.2" ry="2.5" fill="#E7A090"></ellipse>
+    <ellipse cx="48" cy="48" rx="4.2" ry="2.5" fill="#E7A090"></ellipse>
     <g class="eyes">
       <g class="eye">
-        <ellipse cx="25.2" cy="46.2" rx="3" ry="3.3" fill="#191825"></ellipse>
-        <circle cx="26.2" cy="45.1" r="1" fill="#ffffff"></circle>
+        <ellipse cx="23" cy="47" rx="5.6" ry="6.4" fill="#ffffff"></ellipse>
+        <circle cx="23" cy="48.2" r="2.3" fill="#191825"></circle>
       </g>
       <g class="eye">
-        <ellipse cx="36.4" cy="45.6" rx="3" ry="3.3" fill="#191825"></ellipse>
-        <circle cx="37.4" cy="44.5" r="1" fill="#ffffff"></circle>
+        <ellipse cx="41" cy="47" rx="5.6" ry="6.4" fill="#ffffff"></ellipse>
+        <circle cx="41" cy="48.2" r="2.3" fill="#191825"></circle>
       </g>
     </g>
-    <path class="smile smile-rest" d="M26.6 53.2c1.4 1.9 3.2 2.9 5 2.9s3.5-1 4.9-2.9" fill="none" stroke="#191825" stroke-width="2" stroke-linecap="round"></path>
-    <path class="smile smile-big" d="M23.2 51.8c2.3 4.6 5.6 6.3 8.2 6.3s5.9-1.7 8.2-6.3" fill="none" stroke="#191825" stroke-width="2.2" stroke-linecap="round"></path>
+    <path class="smile smile-rest" d="M27 56.2c1.6 1.8 3.4 2.6 5 2.6s3.4-.8 5-2.6" fill="none" stroke="#191825" stroke-width="2.2" stroke-linecap="round"></path>
+    <path class="smile smile-big" d="M22 54.5c2.8 4.8 6.2 6.6 10 6.6s7.2-1.8 10-6.6" fill="none" stroke="#191825" stroke-width="2.4" stroke-linecap="round"></path>
   </g>
 </svg>`;
 

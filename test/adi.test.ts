@@ -89,8 +89,9 @@ test("ADI's widget is its own embed, with the cap and the site colours", () => {
   assert.match(js, /smile-big/);
   assert.match(js, /smile-rest/);
   assert.match(js, /launcher:hover \.smile-big/);
-  assert.match(js, /class=\\"peak|class="peak"/);
-  assert.doesNotMatch(js, /rx=\\"27\\"|rx="27"/);
+  assert.match(js, /class=\\"bobble|class="bobble"/);
+  assert.match(js, /beanie-band/);
+  assert.doesNotMatch(js, /class=\\"peak|class="peak"/);
   assert.doesNotMatch(js, /Urbanist/);
   assert.doesNotMatch(js, /Grant/);
   assert.doesNotMatch(js, /\p{Extended_Pictographic}/u);
