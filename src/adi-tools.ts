@@ -76,7 +76,12 @@ function availabilityProperties(fields: EnquiryField[]): Record<string, unknown>
   for (const field of fields) {
     properties[field.key] = {
       type: "string",
-      description: field.kind === "yes_no" ? `${field.label}. Yes or no.` : field.ask,
+      description:
+        field.kind === "yes_no"
+          ? `${field.label}. Yes or no.`
+          : field.kind === "lesson_type"
+            ? "Automatic, manual, or not sure. The school offers both, at the same price."
+            : field.ask,
     };
   }
   return properties;

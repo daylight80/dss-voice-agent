@@ -10,6 +10,12 @@ import type { LeadType } from "./notify.js";
 /** Asked, in order, when someone wants to check lesson availability. */
 export const ADI_AVAILABILITY_FIELDS: EnquiryField[] = [
   { key: "name", label: "Name", ask: "What's your name?" },
+  {
+    key: "lesson_type",
+    label: "Lesson type (automatic or manual)",
+    ask: "Would you like automatic or manual lessons? The school offers both, and they cost the same. Not sure is fine.",
+    kind: "lesson_type",
+  },
   { key: "phone", label: "Phone number", ask: "What's the best phone number?" },
   { key: "pickup_postcode", label: "Pickup postcode", ask: "What's the postcode you'd like to be picked up from?" },
   {

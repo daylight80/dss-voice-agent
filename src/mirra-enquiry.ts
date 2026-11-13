@@ -24,8 +24,8 @@ export type EnquiryField = {
   label: string;
   /** How the assistant should ask. */
   ask: string;
-  /** yes_no is stored as Yes or No when the answer is clear. */
-  kind?: "text" | "yes_no";
+  /** yes_no becomes Yes or No. lesson_type becomes automatic, manual, or not sure when the answer is clear. */
+  kind?: "text" | "yes_no" | "lesson_type";
   max?: number;
 };
 
@@ -172,10 +172,15 @@ function readAvailability(
   const details = [];
   for (const field of profile.availabilityFields) {
     const raw = text(args[field.key], field.max ?? 300);
-    const value = field.kind === "yes_no" ? yesNo(raw) : raw;
+    const value = field.kind === "yes_no" ? yesNo(raw) : field.kind === "lesson_type" ? lessonType(raw) : raw;
     if (value) details.push({ key: field.key, label: field.label, value });
   }
   return details.length ? details : undefined;
+}
+
+function lessonType(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return normaliseTransmission(value) ?? value;
 }
 
 function yesNo(value: string | undefined): string | undefined {
