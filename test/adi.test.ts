@@ -46,7 +46,11 @@ test("ADI quotes Formula Jon only, and refuses a price that is not on the site",
   assert.match(instructions, /ready to check lesson availability/);
   assert.match(instructions, /one or two at a time/);
   const availability = instructions.slice(instructions.indexOf("1) Name"), instructions.indexOf("If they would rather not"));
-  assert.match(availability, /1\) Name[\s\S]*2\) Phone number[\s\S]*3\) Pickup postcode[\s\S]*4\) Lesson availability[\s\S]*5\) Theory test passed/);
+  assert.match(
+    availability,
+    /1\) Name[\s\S]*2\) Lesson type \(automatic or manual\)[\s\S]*3\) Phone number[\s\S]*4\) Pickup postcode[\s\S]*5\) Lesson availability[\s\S]*6\) Theory test passed/,
+  );
+  assert.match(instructions, /offers both, and they cost the same/);
   assert.doesNotMatch(instructions, /£299\.99/);
   assert.doesNotMatch(instructions, /Driving School Solutions/);
   assert.doesNotMatch(instructions, /Grant/);
@@ -190,6 +194,7 @@ test("ADI enquiries are stored apart from Mirra and emailed with the ADI subject
       now: new Date("2026-11-13T10:30:00.000Z"),
       args: {
         name: "Alex Patel",
+        lesson_type: "Automatic",
         phone: "07790 333444",
         pickup_postcode: "SM5 4NQ",
         lesson_availability: "Weekday evenings after 6",
@@ -201,12 +206,13 @@ test("ADI enquiries are stored apart from Mirra and emailed with the ADI subject
     const storedFull = JSON.parse(line ?? "{}") as LeadRecord;
     assert.deepEqual(
       storedFull.details?.map((detail) => detail.label),
-      ["Name", "Phone number", "Pickup postcode", "Lesson availability", "Theory test passed"],
+      ["Name", "Lesson type (automatic or manual)", "Phone number", "Pickup postcode", "Lesson availability", "Theory test passed"],
     );
     assert.equal(storedFull.details?.find((detail) => detail.key === "theory_passed")?.value, "No");
     assert.equal(storedFull.school_or_area, "SM5 4NQ");
     const email = posted[0]?.text ?? "";
     assert.match(email, /Name: Alex Patel/);
+    assert.match(email, /Lesson type \(automatic or manual\): automatic/);
     assert.match(email, /Phone number: 07790 333444/);
     assert.match(email, /Pickup postcode: SM5 4NQ/);
     assert.match(email, /Lesson availability: Weekday evenings after 6/);
@@ -214,11 +220,12 @@ test("ADI enquiries are stored apart from Mirra and emailed with the ADI subject
     assert.equal(posted[0]?.to, "jon@example.com");
     assert.equal(posted[0]?.bcc, "office@example.com");
     const nameAt = email.indexOf("Name:");
+    const typeAt = email.indexOf("Lesson type (automatic or manual):");
     const phoneAt = email.indexOf("Phone number:");
     const postcodeAt = email.indexOf("Pickup postcode:");
     const whenAt = email.indexOf("Lesson availability:");
     const theoryAt = email.indexOf("Theory test passed:");
-    assert.ok(nameAt < phoneAt && phoneAt < postcodeAt && postcodeAt < whenAt && whenAt < theoryAt);
+    assert.ok(nameAt < typeAt && typeAt < phoneAt && phoneAt < postcodeAt && postcodeAt < whenAt && whenAt < theoryAt);
 
     const empty = await saveAdiEnquiry({
       tool: "save_lead",
