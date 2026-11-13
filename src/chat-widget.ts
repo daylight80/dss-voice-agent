@@ -37,6 +37,11 @@ export type ChatWidgetSpec = {
   /** Path the embed is served from, such as /mirra/widget.js. */
   scriptPath: string;
   bannerComment: string;
+  /**
+   * ADI blinks at a slightly random gap and smiles when the chat opens,
+   * when he replies, and while the launcher is hovered. Mirra leaves this unset.
+   */
+  expression?: "adi";
 };
 
 export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageChars?: number }): string {
@@ -46,6 +51,7 @@ export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageCha
   const busy = JSON.stringify(spec.busyStatus);
   const host = jsRegExpSource(spec.linkHost);
   const scriptRe = jsRegExpSource(spec.scriptPath);
+  const adi = spec.expression === "adi";
 
   return `/* ${spec.bannerComment} */
 (function () {
@@ -158,11 +164,13 @@ export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageCha
       }
       log.appendChild(item);
       if (stick !== false) log.scrollTop = log.scrollHeight;
+      ${adi ? "if (message.role !== \"user\") watchBlinks(item);\n      if (stick !== false && message.role === \"assistant\") please();" : ""}
     }
 
     function setOpen(open) {
       if (open) panel.removeAttribute("hidden");
       else panel.setAttribute("hidden", "");
+      ${adi ? "if (open) please();" : ""}
       launcher.setAttribute("aria-expanded", open ? "true" : "false");
       if (open && !state.closed) input.focus();
       if (!open) launcher.focus();
@@ -187,6 +195,7 @@ export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageCha
           row.className = "msg assistant thinking";
           row.setAttribute("aria-hidden", "true");
           row.appendChild(avatarClone());
+          ${adi ? "watchBlinks(row);" : ""}
           log.appendChild(row);
           log.scrollTop = log.scrollHeight;
         }
@@ -272,8 +281,10 @@ export function renderChatWidget(spec: ChatWidgetSpec, options?: { maxMessageCha
       });
     }
 
+    ${adi ? ADI_EXPRESSION_JS : ""}
     render();
     persist();
+    ${adi ? "watchBlinks(shadow);" : ""}
   }
 
   function appendWithLinks(node, text) {
@@ -507,6 +518,7 @@ textarea {
   border: 0;
 }
 :host :focus-visible { outline: 3px solid ${spec.focus}; outline-offset: 2px; }
+${spec.expression === "adi" ? ADI_EXPRESSION_CSS : ""}
 @media (prefers-reduced-motion: reduce) {
   :host, :host * { transition: none !important; animation: none !important; }
   .launcher:hover .avatar-bob,
@@ -540,6 +552,63 @@ textarea {
 </div>
 <template id="${spec.id}-avatar">${spec.avatarSvg}</template>`;
 }
+
+/**
+ * ADI only. A blink every 3 to 6 seconds, and a short bigger smile when the
+ * panel opens or a reply arrives. Hover is handled in CSS. Reduced motion
+ * skips both.
+ */
+const ADI_EXPRESSION_JS = `var pleaseTimer = 0;
+    function please() {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      host.classList.add("is-pleased");
+      window.clearTimeout(pleaseTimer);
+      pleaseTimer = window.setTimeout(function () { host.classList.remove("is-pleased"); }, 1300);
+    }
+    function scheduleBlink(eye) {
+      if (eye.getAttribute("data-blink") === "1") return;
+      eye.setAttribute("data-blink", "1");
+      function again() {
+        var wait = 3000 + Math.random() * 3000;
+        window.setTimeout(function () {
+          if (!eye.isConnected) return;
+          if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+          eye.classList.add("is-blinking");
+          window.setTimeout(function () {
+            eye.classList.remove("is-blinking");
+            again();
+          }, 140);
+        }, wait);
+      }
+      again();
+    }
+    function watchBlinks(node) {
+      if (!node || !node.querySelectorAll) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var eyes = node.querySelectorAll(".eye");
+      for (var i = 0; i < eyes.length; i++) scheduleBlink(eyes[i]);
+    }`;
+
+const ADI_EXPRESSION_CSS = `.eye { animation: none; transition: transform 80ms ease-in; }
+.eye.is-blinking { transform: scaleY(0.08); }
+.smile-rest, .smile-big { transition: opacity 180ms ease; }
+.smile-big { opacity: 0; }
+.launcher:hover .smile-rest { opacity: 0; }
+.launcher:hover .smile-big { opacity: 1; }
+:host(.is-pleased) .smile-rest { opacity: 0; }
+:host(.is-pleased) .smile-big { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .eye { transition: none; }
+  .eye.is-blinking { transform: none; }
+  .smile-rest, .smile-big { transition: none; }
+  .smile-big,
+  .launcher:hover .smile-big,
+  :host(.is-pleased) .smile-big { opacity: 0; }
+  .smile-rest,
+  .launcher:hover .smile-rest,
+  :host(.is-pleased) .smile-rest { opacity: 1; }
+}
+`;
 
 /** Escape a string for use inside a JavaScript regex literal. Slashes included. */
 function jsRegExpSource(value: string): string {

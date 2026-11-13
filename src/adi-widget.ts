@@ -33,7 +33,8 @@ const AVATAR_SVG = `<svg class="avatar" viewBox="0 0 64 64" aria-hidden="true" f
         <circle cx="40.9" cy="42" r="1.1" fill="#ffffff"></circle>
       </g>
     </g>
-    <path class="smile" d="M26.2 50.2c1.8 2.7 3.8 4 5.8 4s4-1.3 5.8-4" fill="none" stroke="#191825" stroke-width="2" stroke-linecap="round"></path>
+    <path class="smile smile-rest" d="M26.4 50.4c1.6 2.2 3.6 3.3 5.6 3.3s4-1.1 5.6-3.3" fill="none" stroke="#191825" stroke-width="2" stroke-linecap="round"></path>
+    <path class="smile smile-big" d="M22.6 48.8c2.8 5.4 7 7.6 9.4 7.6s6.6-2.2 9.4-7.6" fill="none" stroke="#191825" stroke-width="2.2" stroke-linecap="round"></path>
   </g>
 </svg>`;
 
@@ -69,6 +70,7 @@ const ADI_WIDGET: ChatWidgetSpec = {
   linkHost: "formulajondrivingschool.co.uk",
   scriptPath: "/adi/widget.js",
   bannerComment: "ADI — Formula Jon Driving School website chat.",
+  expression: "adi",
 };
 
 export function adiWidgetJs(options?: { maxMessageChars?: number }): string {
