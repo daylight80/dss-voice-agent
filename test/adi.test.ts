@@ -25,6 +25,9 @@ test("Mirra's widget is unchanged by ADI's colours and name", () => {
   assert.match(js, /Hi, I'm Mirra\. How can I help you\?/);
   assert.doesNotMatch(js, /Formula Jon/);
   assert.doesNotMatch(js, /#E01609/);
+  assert.match(js, /bottom: max\(16px, env\(safe-area-inset-bottom\)\)/);
+  assert.match(js, /100dvh - 96px/);
+  assert.doesNotMatch(js, /bottom: max\(90px/);
   assert.doesNotMatch(js, /is-pleased/);
   assert.doesNotMatch(js, /smile-big/);
   assert.doesNotMatch(js, /Raleway/);
@@ -79,6 +82,8 @@ test("ADI's widget is its own embed, with the cap and the site colours", () => {
   assert.match(js, /\/adi\/widget\.js/);
   assert.match(js, /\/adi\/chat/);
   assert.match(js, /left: max\(16px, env\(safe-area-inset-left\)\)/);
+  assert.match(js, /bottom: max\(90px, env\(safe-area-inset-bottom\)\)/);
+  assert.match(js, /100dvh - 170px/);
   assert.match(js, /\.panel \{[^}]*left: 0;/);
   assert.match(js, /adi-blink/);
   assert.match(js, /adi-breathe/);
