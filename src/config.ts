@@ -117,6 +117,17 @@ export const config = {
     const raw = process.env.ADI_ALLOW_LOCALHOST?.trim().toLowerCase();
     return raw !== "false" && raw !== "0";
   },
+  /** DualControl API origin. The form key is not part of this value. */
+  get adiDualControlApiBase(): string {
+    return process.env.ADI_DUALCONTROL_API_BASE?.trim() || "https://adiapp-backend.onrender.com/api";
+  },
+  /**
+   * Secret form key for DualControl's public enquiry endpoint.
+   * Empty means ADI does not call DualControl.
+   */
+  get adiDualControlFormKey(): string {
+    return process.env.ADI_DUALCONTROL_FORM_KEY?.trim() || "";
+  },
 };
 
 function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {

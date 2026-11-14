@@ -62,6 +62,10 @@ services:
         sync: false
       - key: ADI_ALLOW_LOCALHOST
         value: "true"
+      - key: ADI_DUALCONTROL_API_BASE
+        value: https://adiapp-backend.onrender.com/api
+      - key: ADI_DUALCONTROL_FORM_KEY
+        sync: false
       - key: LEADS_READ_TOKEN
         sync: false
       - key: NODE_ENV
