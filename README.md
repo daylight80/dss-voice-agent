@@ -117,6 +117,8 @@ Email uses the same webhook or SMTP as Amber and Mirra. The subject starts with 
 
 A BCC that is the same address as To is left off. Webhook deliveries include `bcc` in the JSON only when there is a copy. SMTP uses the `bcc` field.
 
+After that email, a saved enquiry that has a phone number is also posted to DualControl at `{ADI_DUALCONTROL_API_BASE}/public/enquiries/{ADI_DUALCONTROL_FORM_KEY}`. The base defaults to `https://adiapp-backend.onrender.com/api`. The form key is a secret: set `ADI_DUALCONTROL_FORM_KEY` in the host environment and do not commit it. If the key is unset, the copy is skipped. A DualControl failure does not undo the saved enquiry or the email. Enquiries with no phone number are not posted.
+
 The chat API accepts `https://formulajondrivingschool.co.uk` and `https://www.formulajondrivingschool.co.uk`, plus localhost unless `ADI_ALLOW_LOCALHOST=false`. Set `ADI_ALLOWED_ORIGINS` to replace that site list. A request from the Driving School Solutions site is rejected.
 
 ### WordPress (not installed yet)
@@ -169,7 +171,7 @@ Do **not** point a live Twilio trunk at localhost. Deploy to Render (or use a tu
    - `PUBLIC_BASE_URL` = `https://<service>.onrender.com`
    - `LEADS_READ_TOKEN` if a follow-up assistant should call `GET /mirra/leads`
    - Optional: `XAI_CHAT_MODEL`, `MIRRA_REASONING_EFFORT`, `MIRRA_ALLOWED_ORIGINS`
-   - Optional, for ADI: `ADI_NOTIFY_TO_EMAIL` (default `info@formulajondrivingschool.co.uk`), `ADI_NOTIFY_BCC_EMAIL` (default `NOTIFY_TO_EMAIL`), `ADI_ALLOWED_ORIGINS`, `ADI_ALLOW_LOCALHOST`
+   - Optional, for ADI: `ADI_NOTIFY_TO_EMAIL` (default `info@formulajondrivingschool.co.uk`), `ADI_NOTIFY_BCC_EMAIL` (default `NOTIFY_TO_EMAIL`), `ADI_ALLOWED_ORIGINS`, `ADI_ALLOW_LOCALHOST`, `ADI_DUALCONTROL_FORM_KEY` (secret; unset skips the DualControl copy), `ADI_DUALCONTROL_API_BASE` (default `https://adiapp-backend.onrender.com/api`)
    - Optional, for Mirra only: `MIRRA_NOTIFY_TO_EMAIL`, `MIRRA_NOTIFY_BCC_EMAIL`
 4. Confirm `GET https://<service>.onrender.com/health` returns `ok: true`.
 

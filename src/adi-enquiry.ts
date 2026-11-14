@@ -3,6 +3,7 @@
  * they can be read and notified on their own.
  */
 
+import { adiEnquirySourceFromArgs, sendAdiEnquiryToDualControl } from "./adi-dualcontrol.js";
 import { config } from "./config.js";
 import { saveMirraEnquiry, type EnquiryField, type EnquiryProfile, type EnquiryResult } from "./mirra-enquiry.js";
 import type { LeadType } from "./notify.js";
@@ -50,12 +51,16 @@ const ADI_PROFILE: EnquiryProfile = {
   } satisfies Partial<Record<LeadType, string>>,
 };
 
-export function saveAdiEnquiry(input: {
+export async function saveAdiEnquiry(input: {
   tool: string;
   args: Record<string, unknown>;
   conversationId: string;
   now?: Date;
   alreadySaved?: Set<string>;
 }): Promise<EnquiryResult> {
-  return saveMirraEnquiry(input, ADI_PROFILE);
+  const result = await saveMirraEnquiry(input, ADI_PROFILE);
+  if (result.saved) {
+    await sendAdiEnquiryToDualControl(adiEnquirySourceFromArgs(input.args));
+  }
+  return result;
 }
