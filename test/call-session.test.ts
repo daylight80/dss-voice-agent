@@ -337,3 +337,43 @@ test("a caller who says nothing still produces one summary email", async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test("a failed lead email is not reported to the caller as a failed save", async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "amber-email-fail-"));
+  const restore = useEmailEnv(dir);
+  const original = globalThis.fetch;
+  const spy = test.mock.method(console, "error", () => undefined);
+  globalThis.fetch = (async () => new Response("down", { status: 500 })) as typeof fetch;
+  try {
+    const ws = fakeSocket();
+    joinCall(
+      { callId: "call_email_down", from: "<sip:+447700900687@pstn.twilio.com>" },
+      { connect: () => ws as unknown as WebSocket, lookupMemory: async () => undefined },
+    );
+    ws.emit("open");
+    ws.emit(
+      "message",
+      Buffer.from(
+        JSON.stringify({
+          type: "response.function_call_arguments.done",
+          call_id: "tool-email-down",
+          name: "leave_message",
+          arguments: JSON.stringify({ name: "Jane Smith", message: "Please ring me" }),
+        }),
+      ),
+    );
+    await waitFor(() => sentJson(ws).some((m) => (m.item as { type?: string } | undefined)?.type === "function_call_output"));
+
+    const out = sentJson(ws).find((m) => (m.item as { type?: string } | undefined)?.type === "function_call_output");
+    const result = JSON.parse((out!.item as { output: string }).output) as { ok: boolean; emailed: boolean };
+    assert.equal(result.ok, true);
+    assert.equal(result.emailed, false);
+    assert.match(await fs.readFile(path.join(dir, "leads.jsonl"), "utf8"), /Please ring me/);
+    ws.emit("close", 1000, Buffer.from(""));
+  } finally {
+    spy.mock.restore();
+    globalThis.fetch = original;
+    restore();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

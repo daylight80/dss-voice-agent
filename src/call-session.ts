@@ -377,7 +377,14 @@ async function saveTyped(
   };
 
   const file = await persistRecord(record);
-  const notify = await notifyGrant(record);
+  // The lead is already on disk, so a failed email must not make Amber tell the caller it was not saved.
+  let notify: { emailed: boolean; detail: string };
+  try {
+    notify = await notifyGrant(record);
+  } catch (err) {
+    console.error(`[call ${meta.callId}] email failed after the record was saved`, err);
+    notify = { emailed: false, detail: "Saved; the email could not be sent" };
+  }
 
   return {
     ok: true,

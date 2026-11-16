@@ -4,7 +4,9 @@ import nodemailer from "nodemailer";
 import { config, hasEmailConfigured } from "./config.js";
 import { withDataLock } from "./data-lock.js";
 
-export const LEAD_TYPES = ["lead", "callback", "message", "gbp_audit"] as const;
+const EMAIL_TIMEOUT_MS = 10_000;
+
+export const LEAD_TYPES =["lead", "callback", "message", "gbp_audit"] as const;
 export type LeadType = (typeof LEAD_TYPES)[number];
 
 export const LEAD_SOURCES = ["phone", "website_chat"] as const;
@@ -163,6 +165,8 @@ export async function deliverEmail(
     const res = await fetch(config.emailWebhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // A live caller is waiting on this, so give up fast instead of hanging.
+      signal: AbortSignal.timeout(EMAIL_TIMEOUT_MS),
       body: JSON.stringify({
         to: recipient,
         ...(bcc ? { bcc } : {}),
@@ -184,6 +188,9 @@ export async function deliverEmail(
       host: config.smtp.host,
       port: config.smtp.port,
       secure: config.smtp.secure,
+      connectionTimeout: EMAIL_TIMEOUT_MS,
+      greetingTimeout: EMAIL_TIMEOUT_MS,
+      socketTimeout: EMAIL_TIMEOUT_MS,
       auth:
         config.smtp.user && config.smtp.pass
           ? { user: config.smtp.user, pass: config.smtp.pass }
