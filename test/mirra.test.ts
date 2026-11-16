@@ -328,9 +328,8 @@ test("the widget is one script, scoped, and the chat endpoint enforces origin an
   const base = `http://127.0.0.1:${port}`;
 
   try {
-    const health = await fetch(`${base}/health`).then((res) => res.json() as Promise<{ chat?: string; ok?: boolean }>);
-    assert.equal(health.ok, true);
-    assert.equal(health.chat, "Mirra");
+    const health = await fetch(`${base}/health`).then((res) => res.json());
+    assert.deepEqual(health, { ok: true, service: "dss-voice-agent" });
 
     const widget = await fetch(`${base}/mirra/widget.js`);
     assert.equal(widget.headers.get("content-type"), "application/javascript; charset=utf-8");

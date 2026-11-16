@@ -32,19 +32,9 @@ export function createApp(options?: AppOptions): express.Express {
     }),
   );
 
+  // Public, so it says only that the service is up. Settings and numbers are not for strangers.
   app.get("/health", (_req, res) => {
-    res.status(200).json({
-      ok: true,
-      service: "dss-voice-agent",
-      receptionist: "Amber",
-      chat: "Mirra",
-      chats: ["Mirra", "ADI"],
-      phone: config.dssPhoneNumber,
-      voice: config.voice,
-      emailConfigured: hasEmailConfigured(),
-      leadsReadConfigured: Boolean(config.leadsReadToken),
-      time: new Date().toISOString(),
-    });
+    res.status(200).json({ ok: true, service: "dss-voice-agent" });
   });
 
   app.post("/webhooks/xai/incoming", async (req, res) => {

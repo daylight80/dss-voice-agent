@@ -308,11 +308,8 @@ test("ADI's origins, tools and lead list stay off Mirra's", async () => {
   const base = `http://127.0.0.1:${port}`;
 
   try {
-    const health = await fetch(`${base}/health`).then(
-      (res) => res.json() as Promise<{ chat?: string; chats?: string[] }>,
-    );
-    assert.equal(health.chat, "Mirra");
-    assert.deepEqual(health.chats, ["Mirra", "ADI"]);
+    assert.equal((await fetch(`${base}/health`)).status, 200);
+    assert.equal((await fetch(`${base}/adi/widget.js`)).status, 200);
 
     const preview = await fetch(`${base}/adi/preview`);
     assert.equal(preview.status, 200);
