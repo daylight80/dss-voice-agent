@@ -51,7 +51,7 @@ services:
       - key: MIRRA_REASONING_EFFORT
         value: low
       - key: MIRRA_ALLOW_LOCALHOST
-        value: "true"
+        value: "false"
       - key: MIRRA_ALLOWED_ORIGINS
         sync: false
       - key: ADI_NOTIFY_TO_EMAIL
@@ -61,7 +61,7 @@ services:
       - key: ADI_ALLOWED_ORIGINS
         sync: false
       - key: ADI_ALLOW_LOCALHOST
-        value: "true"
+        value: "false"
       - key: ADI_DUALCONTROL_API_BASE
         value: https://adiapp-backend.onrender.com/api
       - key: ADI_DUALCONTROL_FORM_KEY
