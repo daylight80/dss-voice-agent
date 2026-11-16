@@ -385,3 +385,35 @@ function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
 }
+
+test("the whole chat stops calling the model once the hourly cap is reached", async () => {
+  let modelCalls = 0;
+  const complete: Completer = async () => {
+    modelCalls += 1;
+    return { output: [{ type: "message", content: "Hello from Mirra." }] };
+  };
+  const app = createApp({
+    mirra: { complete, chatRules: [{ windowMs: 60_000, max: 100 }], hourlyCap: 2 },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  const address = server.address();
+  const base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+  const send = () =>
+    fetch(`${base}/mirra/chat`, {
+      method: "POST",
+      headers: { Origin: "http://localhost:3000", "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "Hi" }),
+    });
+  try {
+    assert.equal((await send()).status, 200);
+    assert.equal((await send()).status, 200);
+    const third = await send();
+    assert.equal(third.status, 429);
+    assert.ok(Number(third.headers.get("retry-after")) >= 1);
+    assert.match(((await third.json()) as { reply: string }).reply, /020 8194 1993/);
+    assert.equal(modelCalls, 2);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
+  }
+});

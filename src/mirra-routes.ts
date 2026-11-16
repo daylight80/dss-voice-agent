@@ -24,6 +24,8 @@ import { LEAD_SOURCES, LEAD_TYPES, listLeads, type LeadSource, type LeadType } f
 export type MirraRuntime = ChatDeps & {
   chatRules?: RateRule[];
   leadsRules?: RateRule[];
+  /** Test hook. Production reads <PREFIX>_MAX_PER_HOUR (default 300). */
+  hourlyCap?: number;
 };
 
 export type ChatMount = {
@@ -71,6 +73,10 @@ export function createChatRouter(mount: ChatMount, runtime: MirraRuntime = {}): 
   const router = express.Router();
   const chatLimit = createRateLimiter(runtime.chatRules ?? chatRulesFromEnv(mount.ratePrefix));
   const leadsLimit = createRateLimiter(runtime.leadsRules ?? LEADS_RATE_RULES);
+  // Spending brake for the whole chat. The per-visitor limit cannot stop many visitors at once.
+  const hourlyCap = createRateLimiter([
+    { windowMs: 3_600_000, max: runtime.hourlyCap ?? numberEnv(`${mount.ratePrefix}_MAX_PER_HOUR`, 300) },
+  ]);
 
   if (mount.previewHtml) {
     router.get("/preview", (_req, res) => {
@@ -110,6 +116,14 @@ export function createChatRouter(mount: ChatMount, runtime: MirraRuntime = {}): 
     if (!decision.ok) {
       res.set("Retry-After", String(decision.retryAfterSeconds));
       res.status(429).json({ error: "rate_limited", reply: mount.rateLimitMessage() });
+      return;
+    }
+
+    const overall = hourlyCap.allow("all");
+    if (!overall.ok) {
+      console.warn(`[${mount.logTag}] hourly chat cap reached`);
+      res.set("Retry-After", String(overall.retryAfterSeconds));
+      res.status(429).json({ error: "busy", reply: mount.contactFallback() });
       return;
     }
 
