@@ -91,6 +91,8 @@ export function createChatRouter(mount: ChatMount, runtime: MirraRuntime = {}): 
     res.set("Content-Type", "application/javascript; charset=utf-8");
     res.set("Cache-Control", "public, max-age=300");
     res.set("X-Content-Type-Options", "nosniff");
+    // Public script. Without this, a page that fetches it (rather than using a script tag) logs a CORS error.
+    res.set("Access-Control-Allow-Origin", "*");
     res.send(mount.widgetJs({ maxMessageChars: config.mirraMaxMessageChars }));
   });
 

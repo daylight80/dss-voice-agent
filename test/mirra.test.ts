@@ -333,6 +333,7 @@ test("the widget is one script, scoped, and the chat endpoint enforces origin an
 
     const widget = await fetch(`${base}/mirra/widget.js`);
     assert.equal(widget.headers.get("content-type"), "application/javascript; charset=utf-8");
+    assert.equal(widget.headers.get("access-control-allow-origin"), "*");
     assert.match(await widget.text(), /Mirra/);
 
     const denied = await fetch(`${base}/mirra/chat`, {
